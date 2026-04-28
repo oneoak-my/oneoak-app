@@ -107,7 +107,7 @@ export async function GET(request: Request) {
       const logoBytes = await fetchBytes(new URL('/logo.png', request.url).toString())
       if (logoBytes) {
         const logoImg = await pdfDoc.embedPng(logoBytes)
-        const { width: pageWidth, height: pageHeight } = cover.getSize()
+        const { height: pageHeight } = cover.getSize()
         const { width: imgWidth, height: imgHeight } = logoImg
         const logoDisplayWidth = 200
         const logoDisplayHeight = (imgHeight / imgWidth) * logoDisplayWidth
