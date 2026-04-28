@@ -35,8 +35,11 @@
 
 /* ── Base styles ─────────────────────────────────────────────────────────── */
 
-* { box-sizing: border-box; }
+* { box-sizing: border-box; touch-action: manipulation; }
 html { -webkit-text-size-adjust: 100%; }
+
+/* Buttons always get a generous tap target */
+button { min-height: 44px; }
 
 body {
   background-color: #141210;

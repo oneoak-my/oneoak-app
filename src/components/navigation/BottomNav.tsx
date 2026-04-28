@@ -23,7 +23,8 @@ export default function BottomNav() {
             <Link
               key={href}
               href={href}
-              className={`flex flex-col items-center gap-0.5 px-5 py-2 rounded-xl transition-colors ${
+              style={{ minHeight: '48px', minWidth: '64px' }}
+              className={`flex flex-col items-center justify-center gap-0.5 px-5 py-2 rounded-xl transition-colors touch-manipulation ${
                 isActive
                   ? 'text-gold-400'
                   : 'text-[#7c6f54] hover:text-[#a89d84]'

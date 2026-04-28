@@ -140,8 +140,8 @@ export default function RecordDetailPage() {
       <div className="flex items-center justify-between">
         <button
           onClick={() => router.push(`/units/${record.unit_id}`)}
-          style={{ minWidth: '44px', minHeight: '44px' }}
-          className="flex items-center gap-1.5 px-3 py-2 -ml-2 rounded-lg text-[#7c6f54] hover:text-[#f5f0e8] active:bg-black/10 transition-colors"
+          style={{ minWidth: '48px', minHeight: '48px' }}
+          className="flex items-center gap-1.5 px-3 py-3 -ml-2 rounded-lg text-[#7c6f54] hover:text-[#f5f0e8] active:bg-black/10 transition-colors touch-manipulation"
         >
           <ArrowLeft size={16} />
           <span className="text-sm">{record.unit?.unit_number}</span>
@@ -152,8 +152,8 @@ export default function RecordDetailPage() {
               href={`/api/invoice-bundle?recordId=${record.id}`}
               target="_blank"
               rel="noopener noreferrer"
-              style={{ minHeight: '44px', minWidth: '44px' }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-transparent hover:bg-[#262018] text-[#a89d84] hover:text-[#f5f0e8] transition-all duration-150"
+              style={{ minHeight: '48px', minWidth: '48px' }}
+              className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-xs font-medium bg-transparent hover:bg-[#262018] text-[#a89d84] hover:text-[#f5f0e8] transition-all duration-150 touch-manipulation"
             >
               <Paperclip size={14} />
               Invoices
