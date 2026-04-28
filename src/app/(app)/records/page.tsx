@@ -50,7 +50,7 @@ function RecordsContent() {
     <div className="px-4 py-5 space-y-4">
       <div className="flex items-center gap-3">
         <button
-          onClick={() => router.push('/')}
+          onClick={() => router.back()}
           className="p-2 -ml-2 rounded-lg text-[#7c6f54] hover:text-[#f5f0e8] hover:bg-[#262018] transition-colors"
         >
           <ArrowLeft size={18} />

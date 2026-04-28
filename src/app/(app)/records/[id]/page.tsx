@@ -38,6 +38,7 @@ export default function RecordDetailPage() {
   const [editingService, setEditingService] = useState<Service | null>(null)
   const [showReport, setShowReport] = useState(false)
   const [bundleLoading, setBundleLoading] = useState(false)
+  const [bundleError, setBundleError] = useState('')
 
   const load = useCallback(async () => {
     try {
@@ -114,13 +115,17 @@ export default function RecordDetailPage() {
   async function handleDownloadBundle() {
     if (!record) return
     setBundleLoading(true)
+    setBundleError('')
     try {
       const res = await fetch('/api/invoice-bundle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ recordId: record.id }),
       })
-      if (!res.ok) throw new Error('Failed to generate bundle')
+      if (!res.ok) {
+        const msg = await res.text().catch(() => '')
+        throw new Error(msg || `Server error ${res.status}`)
+      }
       const blob = await res.blob()
 
       // Build filename: unit-recordtype-DD-Mon-YYYY-invoices.pdf
@@ -134,10 +139,16 @@ export default function RecordDetailPage() {
       const a = document.createElement('a')
       a.href = url
       a.download = filename
+      a.style.position = 'fixed'
+      a.style.left = '-9999px'
+      document.body.appendChild(a)
       a.click()
-      URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      // Delay revoke so the browser has time to start the download
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
     } catch (e) {
       console.error('Invoice bundle error:', e)
+      setBundleError(e instanceof Error ? e.message : 'Failed to generate PDF. Please try again.')
     } finally {
       setBundleLoading(false)
     }
@@ -194,6 +205,10 @@ export default function RecordDetailPage() {
             className="text-red-400 hover:text-red-300" />
         </div>
       </div>
+
+      {bundleError && (
+        <p className="text-xs text-red-400 text-center -mt-2">{bundleError}</p>
+      )}
 
       {/* Header */}
       <div>
