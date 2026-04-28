@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/elleensia/.npm/_cacache/content-v2/sha512/8f/**)",
+      "Bash(rm -rf /Users/elleensia/.npm/_cacache/content-v2/sha512/8f/43)",
+      "Bash(curl -s http://localhost:3000)",
+      "Bash(npx tsc *)",
+      "Bash(npm install *)"
+    ]
+  }
+}

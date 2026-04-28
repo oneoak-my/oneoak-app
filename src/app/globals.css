@@ -1,0 +1,150 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Gold accent channel variables ───────────────────────────────────────────
+   Space-separated RGB channels consumed by the withOpacity() Tailwind helper.
+   Each theme swaps these to shift the entire accent palette atomically. */
+
+:root {
+  --gold-300-ch: 252 211 77;    /* #fcd34d */
+  --gold-400-ch: 251 191 36;    /* #fbbf24 */
+  --gold-500-ch: 245 158 11;    /* #f59e0b */
+  --gold-600-ch: 217 119 6;     /* #d97706 */
+}
+
+/* Warm Neutral — accent shifts to readable amber brown */
+[data-theme="warm"] {
+  --gold-300-ch: 217 119 6;     /* #d97706 */
+  --gold-400-ch: 180 83 9;      /* #b45309 */
+  --gold-500-ch: 146 64 14;     /* #92400e */
+  --gold-600-ch: 120 53 15;     /* #78350f */
+}
+
+/* ── Smooth theme transitions ────────────────────────────────────────────── */
+
+*, *::before, *::after {
+  transition-property: background-color, border-color, color, fill, stroke, box-shadow;
+  transition-duration: 0.2s;
+  transition-timing-function: ease;
+}
+
+.animate-pulse, .animate-spin, .animate-bounce, .animate-ping {
+  transition: none !important;
+}
+
+/* ── Base styles ─────────────────────────────────────────────────────────── */
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  background-color: #141210;
+  color: #f5f0e8;
+  font-family: 'Inter', system-ui, sans-serif;
+  min-height: 100dvh;
+  overscroll-behavior: none;
+}
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: #1e1a14; }
+::-webkit-scrollbar-thumb { background: #332c20; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--gold-500-ch)); }
+
+input, select, textarea { background: transparent; outline: none; }
+
+::selection { background: rgb(var(--gold-500-ch) / 0.2); color: rgb(var(--gold-400-ch)); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   WARM NEUTRAL THEME  [data-theme="warm"]
+   Palette: page #F7F5F2 · card #FFFFFF · border #E8E3DC · text #1C1917
+   Accent:  #B45309 (warm amber brown — via CSS variable channels above)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+[data-theme="warm"] body {
+  background-color: #F7F5F2;
+  color: #1C1917;
+}
+
+[data-theme="warm"] ::-webkit-scrollbar-track { background: #EFECE7; }
+[data-theme="warm"] ::-webkit-scrollbar-thumb { background: #D4CFC8; }
+[data-theme="warm"] ::selection { background: rgb(180 83 9 / 0.15); color: #1C1917; }
+
+/* Cards get a subtle shadow instead of harsh borders */
+[data-theme="warm"] .rounded-2xl,
+[data-theme="warm"] .rounded-xl {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+/* — Backgrounds — */
+[data-theme="warm"] .bg-\[\#0e0c08\]     { background-color: #F7F5F2; }
+[data-theme="warm"] .bg-\[\#141210\]     { background-color: #EFECE7; }
+[data-theme="warm"] .bg-\[\#141210\]\/95 { background-color: rgb(239 236 231 / 0.95); }
+[data-theme="warm"] .bg-\[\#181410\]     { background-color: #F2EFE9; }
+[data-theme="warm"] .bg-\[\#1e1a14\]     { background-color: #FFFFFF; }
+[data-theme="warm"] .bg-\[\#262018\]     { background-color: #EFECE7; }
+[data-theme="warm"] .bg-\[\#332c20\]     { background-color: #E8E3DC; }
+[data-theme="warm"] .bg-\[\#5c5040\]     { background-color: #C8C4C0; }
+
+/* — Hover backgrounds — */
+[data-theme="warm"] .hover\:bg-\[\#1e1a14\]:hover { background-color: #F5F2EE; }
+[data-theme="warm"] .hover\:bg-\[\#262018\]:hover  { background-color: #EDE9E4; }
+[data-theme="warm"] .hover\:bg-\[\#2e2719\]:hover  { background-color: #EDE9E4; }
+[data-theme="warm"] .hover\:bg-\[\#332c20\]:hover  { background-color: #E8E3DC; }
+
+/* — Borders — */
+[data-theme="warm"] .border-\[\#332c20\] { border-color: #E8E3DC; }
+[data-theme="warm"] .border-\[\#3d3628\] { border-color: #EDE9E4; }
+[data-theme="warm"] .border-\[\#4a4030\] { border-color: #E0DBD4; }
+
+/* — Text — */
+[data-theme="warm"] .text-\[\#f5f0e8\] { color: #1C1917; }
+[data-theme="warm"] .text-\[\#a89d84\] { color: #44403C; }
+[data-theme="warm"] .text-\[\#7c6f54\] { color: #78716C; }
+[data-theme="warm"] .text-\[\#5c5040\] { color: #A8A29E; }
+[data-theme="warm"] .text-\[\#4a4030\] { color: #C4BDB7; }
+
+/* — Hover text — */
+[data-theme="warm"] .hover\:text-\[\#f5f0e8\]:hover { color: #1C1917; }
+[data-theme="warm"] .hover\:text-\[\#a89d84\]:hover  { color: #44403C; }
+[data-theme="warm"] .hover\:text-\[\#7c6f54\]:hover  { color: #78716C; }
+
+/* — Placeholders — */
+[data-theme="warm"] .placeholder-\[\#5c5040\]::placeholder { color: #C4BDB7; }
+[data-theme="warm"] .placeholder-\[\#4a4030\]::placeholder { color: #D4CFC8; }
+
+/* — Status / semantic colours (dark text on light bg for WCAG AA) — */
+[data-theme="warm"] .text-emerald-300              { color: #166534; }
+[data-theme="warm"] .bg-emerald-500\/20            { background-color: #DCFCE7; }
+[data-theme="warm"] .border-emerald-500\/30        { border-color: #BBF7D0; }
+[data-theme="warm"] .text-orange-300               { color: #9A3412; }
+[data-theme="warm"] .bg-orange-500\/20             { background-color: #FED7AA; }
+[data-theme="warm"] .border-orange-500\/30         { border-color: #FDBA74; }
+[data-theme="warm"] .text-blue-300                 { color: #1E40AF; }
+[data-theme="warm"] .bg-blue-500\/20               { background-color: #DBEAFE; }
+[data-theme="warm"] .border-blue-500\/30           { border-color: #BFDBFE; }
+
+/* — Danger/red — */
+[data-theme="warm"] .text-red-400                  { color: #991B1B; }
+[data-theme="warm"] .text-red-300                  { color: #991B1B; }
+[data-theme="warm"] .hover\:text-red-400:hover     { color: #991B1B; }
+[data-theme="warm"] .bg-red-500\/20                { background-color: #FEE2E2; }
+[data-theme="warm"] .bg-red-500\/10                { background-color: #FEF2F2; }
+[data-theme="warm"] .hover\:bg-red-500\/10:hover   { background-color: #FEF2F2; }
+[data-theme="warm"] .border-red-500\/30            { border-color: #FECACA; }
+[data-theme="warm"] .text-red-400\/70              { color: rgb(153 27 27 / 0.7); }
+
+/* ── Utilities ───────────────────────────────────────────────────────────── */
+
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
+
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+  .safe-top    { padding-top:    env(safe-area-inset-top); }
+}
