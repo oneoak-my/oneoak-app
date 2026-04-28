@@ -136,6 +136,7 @@ export interface Service {
   description: string
   provider_id: string | null
   amount: number
+  payment_by: PaymentBy
   invoice_url: string | null
   payment_status: PaymentStatus
   payment_proof_url: string | null
@@ -177,3 +178,31 @@ export const UTILITY_OPTIONS: { value: UtilityStatus; label: string }[] = [
   { value: 'No Outstanding', label: 'No Outstanding' },
   { value: 'Have Outstanding', label: 'Have Outstanding' },
 ]
+
+// ── Payment method ────────────────────────────────────────────────────────────
+
+export type PaymentBy =
+  | 'Deduct from Deposit'
+  | 'Pay by Owner'
+  | 'Pay by One Oak'
+  | 'Tenant Pay Direct'
+
+export const PAYMENT_BY_CHECKOUT: PaymentBy[] = [
+  'Deduct from Deposit',
+  'Pay by Owner',
+  'Pay by One Oak',
+  'Tenant Pay Direct',
+]
+
+export const PAYMENT_BY_OTHER: PaymentBy[] = [
+  'Pay by Owner',
+  'Pay by One Oak',
+  'Tenant Pay Direct',
+]
+
+export const PAYMENT_BY_COLORS: Record<PaymentBy, string> = {
+  'Deduct from Deposit': 'bg-red-500/15 text-red-400 border border-red-500/25',
+  'Pay by Owner':        'bg-blue-500/15 text-blue-400 border border-blue-500/25',
+  'Pay by One Oak':      'bg-purple-500/15 text-purple-400 border border-purple-500/25',
+  'Tenant Pay Direct':   'bg-orange-500/15 text-orange-400 border border-orange-500/25',
+}

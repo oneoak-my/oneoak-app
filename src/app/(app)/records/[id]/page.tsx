@@ -12,8 +12,8 @@ import {
   getServiceProviders, getServiceDescriptions, uploadInvoice,
   markReportGenerated, extractError,
 } from '@/lib/api'
-import type { PropertyRecord, Service, ServiceProvider, ServiceDescription } from '@/lib/types'
-import { PAYMENT_STATUS_LABELS, UTILITY_OPTIONS } from '@/lib/types'
+import type { PropertyRecord, Service, ServiceProvider, ServiceDescription, RecordType, PaymentBy } from '@/lib/types'
+import { PAYMENT_STATUS_LABELS, UTILITY_OPTIONS, PAYMENT_BY_CHECKOUT, PAYMENT_BY_OTHER, PAYMENT_BY_COLORS } from '@/lib/types'
 import {
   formatDate, formatCurrency, calcRefund,
   generateMoveInReport, generateMoveOutReport, generateMaintenanceReport,
@@ -172,11 +172,14 @@ export default function RecordDetailPage() {
   }
 
   if (!record) {
-    return <EmptyState title="Record not found" action={<Button onClick={() => router.back()}>Go back</Button>} />
+    return <EmptyState title="Record not found" action={<Button onClick={() => router.push('/')}>Go back</Button>} />
   }
 
   const services = record.services ?? []
   const totalServices = services.reduce((s, sv) => s + (sv.amount ?? 0), 0)
+  const totalDeductFromDeposit = services
+    .filter((s) => s.payment_by === 'Deduct from Deposit')
+    .reduce((s, sv) => s + (sv.amount ?? 0), 0)
   const refund = record.type === 'checkout' ? calcRefund(record) : null
   const typeBadge = statusBadge(record.type)
   const hasInvoices = services.some((s) => s.invoice_url)
@@ -186,7 +189,7 @@ export default function RecordDetailPage() {
       {/* Nav */}
       <div className="flex items-center justify-between">
         <button
-          onClick={() => router.back()}
+          onClick={() => router.push(`/units/${record.unit_id}`)}
           style={{ minWidth: '44px', minHeight: '44px' }}
           className="flex items-center gap-1.5 px-3 py-2 -ml-2 rounded-lg text-[#7c6f54] hover:text-[#f5f0e8] active:bg-black/10 transition-colors"
         >
@@ -326,7 +329,7 @@ export default function RecordDetailPage() {
             label="Total Deposits"
             value={formatCurrency((record.security_deposit ?? 0) + (record.utility_deposit ?? 0))}
           />
-          <CardRow label="Total Deductions" value={formatCurrency(totalServices)} />
+          <CardRow label="Total Deductions" value={formatCurrency(totalDeductFromDeposit)} />
           <CardRow
             label="Balance to Refund"
             value={
@@ -404,6 +407,7 @@ export default function RecordDetailPage() {
         open={showAddService}
         onClose={() => setShowAddService(false)}
         recordId={id}
+        recordType={record.type}
         providers={providers}
         descriptions={descriptions}
         onSaved={() => { setShowAddService(false); load() }}
@@ -414,6 +418,7 @@ export default function RecordDetailPage() {
           open={!!editingService}
           onClose={() => setEditingService(null)}
           recordId={id}
+          recordType={record.type}
           providers={providers}
           descriptions={descriptions}
           editService={editingService}
@@ -480,9 +485,14 @@ function ServiceCard({
       <div className="flex items-center px-4 py-3 gap-3">
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-[#f5f0e8] truncate">{service.description}</p>
-          {service.provider && (
-            <p className="text-xs text-[#7c6f54] truncate mt-0.5">{service.provider.name}</p>
-          )}
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            {service.provider && (
+              <p className="text-xs text-[#7c6f54] truncate">{service.provider.name}</p>
+            )}
+            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${PAYMENT_BY_COLORS[service.payment_by]}`}>
+              {service.payment_by}
+            </span>
+          </div>
         </div>
         <div className="shrink-0 text-right">
           <p className="text-sm font-semibold text-gold-400">{formatCurrency(service.amount)}</p>
@@ -559,6 +569,7 @@ function ServiceModal({
   open,
   onClose,
   recordId,
+  recordType,
   providers,
   descriptions,
   editService,
@@ -567,15 +578,20 @@ function ServiceModal({
   open: boolean
   onClose: () => void
   recordId: string
+  recordType: RecordType
   providers: ServiceProvider[]
   descriptions: ServiceDescription[]
   editService?: Service
   onSaved: () => void
 }) {
+  const paymentByOptions = recordType === 'checkout' ? PAYMENT_BY_CHECKOUT : PAYMENT_BY_OTHER
+  const defaultPaymentBy: PaymentBy = recordType === 'checkout' ? 'Deduct from Deposit' : 'Pay by Owner'
+
   const [description, setDescription] = useState(editService?.description ?? '')
   const [customDescription, setCustomDescription] = useState('')
   const [providerId, setProviderId] = useState(editService?.provider_id ?? '')
   const [amount, setAmount] = useState(editService ? String(editService.amount) : '')
+  const [paymentBy, setPaymentBy] = useState<PaymentBy>(editService?.payment_by ?? defaultPaymentBy)
   const [notes, setNotes] = useState(editService?.notes ?? '')
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
@@ -600,6 +616,7 @@ function ServiceModal({
         description: finalDescription,
         provider_id: providerId || null,
         amount: parseFloat(amount),
+        payment_by: paymentBy,
         notes: notes.trim() || null,
         invoice_url: invoiceUrl,
       }
@@ -667,6 +684,12 @@ function ServiceModal({
           onChange={(e) => setAmount(e.target.value)}
           placeholder="0.00"
           prefix="RM"
+        />
+        <Select
+          label="Payment by"
+          value={paymentBy}
+          onChange={(e) => setPaymentBy(e.target.value as PaymentBy)}
+          options={paymentByOptions.map((v) => ({ value: v, label: v }))}
         />
         <Textarea
           label="Notes (optional)"

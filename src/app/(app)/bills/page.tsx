@@ -3,10 +3,10 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Receipt, Copy, Check, MessageCircle, ChevronDown, ChevronUp, Download } from 'lucide-react'
 import { getOutstandingServices, updateService } from '@/lib/api'
-import type { Service } from '@/lib/types'
+import type { Service, PaymentBy } from '@/lib/types'
 import { formatCurrency, formatDate, generateProviderBillMessage } from '@/lib/utils'
 import EmptyState from '@/components/ui/EmptyState'
-import { PAYMENT_STATUS_LABELS } from '@/lib/types'
+import { PAYMENT_STATUS_LABELS, PAYMENT_BY_CHECKOUT, PAYMENT_BY_COLORS } from '@/lib/types'
 
 type GroupedProvider = {
   providerId: string
@@ -22,6 +22,7 @@ export default function BillsPage() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'all' | 'unpaid' | 'proof_sent'>('all')
   const [providerFilter, setProviderFilter] = useState('all')
+  const [paymentByFilter, setPaymentByFilter] = useState<PaymentBy | 'all'>('all')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -49,19 +50,21 @@ export default function BillsPage() {
   const filtered = services.filter((s) => {
     const matchStatus = filter === 'all' || s.payment_status === filter
     const matchProvider = providerFilter === 'all' || (s.provider_id ?? 'no-provider') === providerFilter
-    return matchStatus && matchProvider
+    const matchPaymentBy = paymentByFilter === 'all' || s.payment_by === paymentByFilter
+    return matchStatus && matchProvider && matchPaymentBy
   })
 
-  // Group by provider
+  // "Pay by One Oak" services always group under the virtual "One Oak Sdn Bhd" entry
   const grouped = filtered.reduce<Record<string, GroupedProvider>>((acc, service) => {
-    const key = service.provider_id ?? 'no-provider'
-    const providerName = service.provider?.name ?? 'No Provider'
+    const isOneOak = service.payment_by === 'Pay by One Oak'
+    const key = isOneOak ? 'one-oak-sdn-bhd' : (service.provider_id ?? 'no-provider')
+    const providerName = isOneOak ? 'One Oak Sdn Bhd' : (service.provider?.name ?? 'No Provider')
     if (!acc[key]) {
       acc[key] = {
         providerId: key,
         providerName,
-        bankName: service.provider?.bank_name ?? '',
-        bankAccount: service.provider?.bank_account ?? '',
+        bankName: isOneOak ? '' : (service.provider?.bank_name ?? ''),
+        bankAccount: isOneOak ? '' : (service.provider?.bank_account ?? ''),
         services: [],
         total: 0,
       }
@@ -147,6 +150,44 @@ export default function BillsPage() {
           </button>
         ))}
       </div>
+
+      {/* Payment method filter pills */}
+      <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+        <button
+          onClick={() => setPaymentByFilter('all')}
+          className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            paymentByFilter === 'all'
+              ? 'bg-gold-500 text-[#0e0c08]'
+              : 'bg-[#1e1a14] border border-[#332c20] text-[#7c6f54] hover:text-[#f5f0e8]'
+          }`}
+        >
+          All
+        </button>
+        {PAYMENT_BY_CHECKOUT.map((pb) => (
+          <button
+            key={pb}
+            onClick={() => setPaymentByFilter(pb)}
+            className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              paymentByFilter === pb
+                ? 'bg-gold-500 text-[#0e0c08]'
+                : 'bg-[#1e1a14] border border-[#332c20] text-[#7c6f54] hover:text-[#f5f0e8]'
+            }`}
+          >
+            {pb}
+          </button>
+        ))}
+      </div>
+
+      {/* One Oak summary card */}
+      {paymentByFilter === 'Pay by One Oak' && !loading && (
+        <div className="rounded-2xl border border-purple-500/30 bg-purple-500/5 px-4 py-3">
+          <p className="text-xs font-semibold text-purple-400 uppercase tracking-wider mb-1">One Oak Total to Pay</p>
+          <p className="text-2xl font-bold text-purple-300">{formatCurrency(grandTotal)}</p>
+          <p className="text-xs text-[#7c6f54] mt-0.5">
+            {filtered.length} service{filtered.length !== 1 ? 's' : ''} across {groupedList.length} record{groupedList.length !== 1 ? 's' : ''}
+          </p>
+        </div>
+      )}
 
       {/* Provider filter */}
       {providerOptions.length > 1 && (
@@ -304,7 +345,12 @@ function ProviderBillCard({
             <div key={service.id} className="px-4 py-3">
               <div className="flex items-start justify-between mb-1.5">
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-[#f5f0e8] truncate">{service.description}</p>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="text-xs font-medium text-[#f5f0e8] truncate">{service.description}</p>
+                    <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium ${PAYMENT_BY_COLORS[service.payment_by]}`}>
+                      {service.payment_by}
+                    </span>
+                  </div>
                   {service.record?.unit && (
                     <p className="text-[10px] text-[#5c5040] mt-0.5">
                       {service.record.unit.unit_number} · {service.record.unit.building}

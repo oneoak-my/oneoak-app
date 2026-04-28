@@ -112,7 +112,7 @@ export default function UnitDetailPage() {
                   Retry
                 </Button>
               )}
-              <Button onClick={() => router.back()} icon={<ArrowLeft size={14} />}>
+              <Button onClick={() => router.push('/units')} icon={<ArrowLeft size={14} />}>
                 Go back
               </Button>
             </div>
@@ -129,7 +129,7 @@ export default function UnitDetailPage() {
       {/* Back + actions */}
       <div className="flex items-center justify-between">
         <button
-          onClick={() => router.back()}
+          onClick={() => router.push('/units')}
           style={{ minWidth: '44px', minHeight: '44px' }}
           className="flex items-center gap-1.5 px-3 py-2 -ml-2 rounded-lg text-[#7c6f54] hover:text-[#f5f0e8] active:bg-black/10 transition-colors"
         >

@@ -30,7 +30,9 @@ export function calcDeposits(monthlyRental: number) {
 
 export function calcRefund(record: PropertyRecord): number {
   const totalDeposits = (record.security_deposit ?? 0) + (record.utility_deposit ?? 0)
-  const totalDeductions = (record.services ?? []).reduce((sum, s) => sum + (s.amount ?? 0), 0)
+  const totalDeductions = (record.services ?? [])
+    .filter((s) => s.payment_by === 'Deduct from Deposit')
+    .reduce((sum, s) => sum + (s.amount ?? 0), 0)
   return totalDeposits - totalDeductions
 }
 
@@ -91,8 +93,11 @@ const ROMAN_NUMERALS = [
 export function generateMoveOutReport(record: PropertyRecord): string {
   const unit = record.unit
   const services = record.services ?? []
+
+  // Only services deducted from the deposit count toward the balance calculation
+  const deductServices = services.filter((s) => s.payment_by === 'Deduct from Deposit')
   const totalDeposits = (record.security_deposit ?? 0) + (record.utility_deposit ?? 0)
-  const totalDeductions = services.reduce((sum, s) => sum + s.amount, 0)
+  const totalDeductions = deductServices.reduce((sum, s) => sum + s.amount, 0)
   const balance = totalDeposits - totalDeductions
 
   const lines: string[] = [
@@ -116,13 +121,17 @@ export function generateMoveOutReport(record: PropertyRecord): string {
     `📋 *Deductions*`,
   ]
 
-  services.forEach((s, i) => {
-    const numeral = ROMAN_NUMERALS[i] ?? String(i + 1)
-    lines.push(`${numeral}) ${s.description}`)
-    if (s.notes) lines.push(`- ${s.notes}`)
-    lines.push(`Amount: ${formatCurrency(s.amount)}`)
-    if (i < services.length - 1) lines.push(``)
-  })
+  if (deductServices.length === 0) {
+    lines.push(`- Nil`)
+  } else {
+    deductServices.forEach((s, i) => {
+      const numeral = ROMAN_NUMERALS[i] ?? String(i + 1)
+      lines.push(`${numeral}) ${s.description}`)
+      if (s.notes) lines.push(`- ${s.notes}`)
+      lines.push(`Amount: ${formatCurrency(s.amount)}`)
+      if (i < deductServices.length - 1) lines.push(``)
+    })
+  }
 
   lines.push(``)
   lines.push(`- Total Deductions: ${formatCurrency(totalDeductions)}`)
@@ -143,9 +152,11 @@ export function generateMoveOutReport(record: PropertyRecord): string {
     )
   }
 
-  // Attention to Owner — services that have a provider with bank details
+  // Attention to Owner — Deduct from Deposit or Pay by Owner services with bank details
   const ownerServices = services.filter(
-    (s) => s.provider && s.provider.bank_name && s.provider.bank_account,
+    (s) =>
+      (s.payment_by === 'Deduct from Deposit' || s.payment_by === 'Pay by Owner') &&
+      s.provider && s.provider.bank_name && s.provider.bank_account,
   )
 
   if (ownerServices.length > 0) {
