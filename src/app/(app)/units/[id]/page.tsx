@@ -130,11 +130,18 @@ export default function UnitDetailPage() {
       <div className="flex items-center justify-between">
         <button
           onClick={() => router.push('/units')}
-          style={{ minWidth: '80px', minHeight: '48px', cursor: 'pointer' }}
-          className="flex items-center gap-1.5 px-4 py-3 -ml-3 rounded-lg text-[#7c6f54] hover:text-[#f5f0e8] hover:bg-white/10 active:bg-white/15 transition-colors touch-manipulation"
+          className="flex items-center gap-2 px-4 py-3 rounded-lg font-medium text-sm cursor-pointer select-none"
+          style={{
+            minWidth: '80px',
+            minHeight: '48px',
+            position: 'static',
+            transform: 'none',
+            marginLeft: '0',
+            touchAction: 'manipulation',
+            WebkitTapHighlightColor: 'transparent',
+          }}
         >
-          <ArrowLeft size={16} />
-          <span className="text-sm">Units</span>
+          ← Units
         </button>
         <div className="relative">
           <button

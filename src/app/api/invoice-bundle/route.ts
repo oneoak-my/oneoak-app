@@ -107,10 +107,17 @@ export async function GET(request: Request) {
       const logoBytes = await fetchBytes(new URL('/logo.png', request.url).toString())
       if (logoBytes) {
         const logoImg = await pdfDoc.embedPng(logoBytes)
-        // Cap at 160pt wide, 70pt tall — scaleToFit maintains aspect ratio
-        const scaled = logoImg.scaleToFit(160, 70)
-        cover.drawImage(logoImg, { x: M, y: y - scaled.height, width: scaled.width, height: scaled.height })
-        y -= scaled.height + 16
+        const { width: pageWidth, height: pageHeight } = cover.getSize()
+        const { width: imgWidth, height: imgHeight } = logoImg
+        const logoDisplayWidth = 200
+        const logoDisplayHeight = (imgHeight / imgWidth) * logoDisplayWidth
+        cover.drawImage(logoImg, {
+          x: 40,
+          y: pageHeight - 40 - logoDisplayHeight,
+          width: logoDisplayWidth,
+          height: logoDisplayHeight,
+        })
+        y = pageHeight - 40 - logoDisplayHeight - 16
       } else {
         y -= 10
       }

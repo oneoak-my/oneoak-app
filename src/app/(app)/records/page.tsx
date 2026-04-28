@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, ChevronRight, FileText } from 'lucide-react'
+import { ChevronRight, FileText } from 'lucide-react'
 import { getRecords } from '@/lib/api'
 import type { PropertyRecord, RecordType, Unit } from '@/lib/types'
 import { RECORD_TYPE_LABELS, RECORD_STATUS_COLORS } from '@/lib/types'
@@ -51,10 +51,18 @@ function RecordsContent() {
       <div className="flex items-center gap-3">
         <button
           onClick={() => router.push('/')}
-          style={{ minWidth: '80px', minHeight: '48px', cursor: 'pointer' }}
-          className="flex items-center gap-1.5 px-4 py-3 -ml-3 rounded-lg text-[#7c6f54] hover:text-[#f5f0e8] hover:bg-white/10 active:bg-white/15 transition-colors touch-manipulation"
+          className="flex items-center gap-2 px-4 py-3 rounded-lg font-medium text-sm cursor-pointer select-none"
+          style={{
+            minWidth: '80px',
+            minHeight: '48px',
+            position: 'static',
+            transform: 'none',
+            marginLeft: '0',
+            touchAction: 'manipulation',
+            WebkitTapHighlightColor: 'transparent',
+          }}
         >
-          <ArrowLeft size={18} />
+          ← Back
         </button>
         <h1 className="text-lg font-bold text-[#f5f0e8]">{title}</h1>
       </div>

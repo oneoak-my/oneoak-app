@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import {
-  ArrowLeft, Plus, Trash2, Edit2, Share2, Upload, Check, Clock, X,
+  Plus, Trash2, Edit2, Share2, Upload, Check, Clock, X,
   ChevronDown, ChevronUp, Paperclip,
 } from 'lucide-react'
 import {
@@ -140,11 +140,18 @@ export default function RecordDetailPage() {
       <div className="flex items-center justify-between">
         <button
           onClick={() => router.push(`/units/${record.unit_id}`)}
-          style={{ minWidth: '80px', minHeight: '48px', cursor: 'pointer' }}
-          className="flex items-center gap-1.5 px-4 py-3 -ml-3 rounded-lg text-[#7c6f54] hover:text-[#f5f0e8] hover:bg-white/10 active:bg-white/15 transition-colors touch-manipulation"
+          className="flex items-center gap-2 px-4 py-3 rounded-lg font-medium text-sm cursor-pointer select-none"
+          style={{
+            minWidth: '80px',
+            minHeight: '48px',
+            position: 'static',
+            transform: 'none',
+            marginLeft: '0',
+            touchAction: 'manipulation',
+            WebkitTapHighlightColor: 'transparent',
+          }}
         >
-          <ArrowLeft size={16} />
-          <span className="text-sm">{record.unit?.unit_number}</span>
+          ← {record.unit?.unit_number ?? 'Back'}
         </button>
         <div className="flex items-center gap-2">
           {hasInvoices && (
