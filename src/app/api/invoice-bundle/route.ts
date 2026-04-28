@@ -1,8 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { PDFDocument, StandardFonts, rgb, PageSizes } from 'pdf-lib'
-import { readFileSync } from 'fs'
-import { join } from 'path'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -31,7 +29,6 @@ const TYPE_LABELS: Record<string, string> = {
   maintenance: 'Maintenance',
 }
 
-// Truncate text so it fits within maxWidth pts at given fontSize using Helvetica
 function trunc(text: string, maxChars: number): string {
   return text.length > maxChars ? text.slice(0, maxChars - 1) + '…' : text
 }
@@ -53,11 +50,12 @@ function mimeFromUrl(url: string): string {
   return 'image/jpeg'
 }
 
-// ── Route ─────────────────────────────────────────────────────────────────────
+// ── Route — GET /api/invoice-bundle?recordId=... ──────────────────────────────
 
-export async function POST(req: NextRequest) {
+export async function GET(request: Request) {
   try {
-    const { recordId } = await req.json()
+    const { searchParams } = new URL(request.url)
+    const recordId = searchParams.get('recordId')
     if (!recordId) return NextResponse.json({ error: 'recordId required' }, { status: 400 })
 
     // Fetch record with nested unit + services + providers
@@ -91,7 +89,6 @@ export async function POST(req: NextRequest) {
     const M = 50                    // margin
     const CW = PW - M * 2           // content width = 495.28
 
-    // Colours
     const ink       = rgb(0.12, 0.10, 0.06)
     const muted     = rgb(0.47, 0.39, 0.25)
     const faint     = rgb(0.31, 0.24, 0.14)
@@ -100,22 +97,25 @@ export async function POST(req: NextRequest) {
     const rowHeader = rgb(0.92, 0.88, 0.78)
     const errorRed  = rgb(0.60, 0.20, 0.20)
 
-    // ── Cover page ─────────────────────────────────────────────────────────────
+    // ── Cover page ────────────────────────────────────────────────────────────
 
     const cover = pdfDoc.addPage([PW, PH])
-
     let y = PH - M
 
-    // Logo
+    // Logo — fetch from public URL so it works in serverless
     try {
-      const logoBytes = readFileSync(join(process.cwd(), 'public', 'logo.png'))
-      const logoImg = await pdfDoc.embedPng(logoBytes)
-      const logoW = 120
-      const logoH = logoImg.height * (logoW / logoImg.width)
-      cover.drawImage(logoImg, { x: M, y: y - logoH, width: logoW, height: logoH })
-      y -= logoH + 24
+      const logoUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL ? new URL(request.url).origin : ''}/logo.png`
+      const logoBytes = await fetchBytes(new URL('/logo.png', request.url).toString())
+      if (logoBytes) {
+        const logoImg = await pdfDoc.embedPng(logoBytes)
+        const logoW = 120
+        const logoH = logoImg.height * (logoW / logoImg.width)
+        cover.drawImage(logoImg, { x: M, y: y - logoH, width: logoW, height: logoH })
+        y -= logoH + 24
+      } else {
+        y -= 10
+      }
     } catch {
-      // If logo can't be embedded, fall through and just draw the divider
       y -= 10
     }
 
@@ -123,7 +123,6 @@ export async function POST(req: NextRequest) {
     y -= 16
     cover.drawLine({ start: { x: M, y }, end: { x: PW - M, y }, thickness: 0.5, color: gold })
 
-    // Record meta
     const displayDate = record.type === 'checkin'
       ? (record.move_in_date ?? record.date)
       : record.date
@@ -137,11 +136,9 @@ export async function POST(req: NextRequest) {
     y -= 17
     cover.drawText(`Date: ${fmtDate(displayDate)}`, { x: M, y, size: 11, font: regular, color: ink })
 
-    // Services table heading
     y -= 28
     cover.drawText('Services Invoice & Outstanding Utility Statement', { x: M, y, size: 13, font: bold, color: ink })
 
-    // Table header row
     y -= 20
     cover.drawRectangle({ x: M, y: y - 4, width: CW, height: 18, color: rowHeader })
     cover.drawText('#',           { x: M + 4,   y, size: 9, font: bold, color: faint })
@@ -153,7 +150,6 @@ export async function POST(req: NextRequest) {
       size: 9, font: bold, color: faint,
     })
 
-    // Service rows
     services.forEach((s, i) => {
       y -= 18
       if (i % 2 === 0) {
@@ -169,7 +165,6 @@ export async function POST(req: NextRequest) {
       })
     })
 
-    // Total row
     y -= 14
     cover.drawLine({ start: { x: M, y: y + 6 }, end: { x: PW - M, y: y + 6 }, thickness: 0.4, color: gold })
     y -= 6
@@ -181,7 +176,7 @@ export async function POST(req: NextRequest) {
       size: 10, font: bold, color: ink,
     })
 
-    // ── Invoice pages ──────────────────────────────────────────────────────────
+    // ── Invoice pages ─────────────────────────────────────────────────────────
 
     for (const service of services.filter((s) => s.invoice_url)) {
       const url = service.invoice_url!
@@ -189,7 +184,6 @@ export async function POST(req: NextRequest) {
       const bytes = await fetchBytes(url)
 
       if (!bytes) {
-        // Error page
         const p = pdfDoc.addPage([PW, PH])
         p.drawText(`Could not fetch invoice: ${trunc(service.description, 60)}`, {
           x: M, y: PH / 2, size: 12, font: regular, color: errorRed,
@@ -198,7 +192,6 @@ export async function POST(req: NextRequest) {
       }
 
       if (mime === 'application/pdf') {
-        // Merge all pages from the source PDF
         try {
           const src = await PDFDocument.load(bytes)
           const indices = src.getPageIndices()
@@ -211,15 +204,12 @@ export async function POST(req: NextRequest) {
           })
         }
       } else {
-        // Image: embed full-page with header label
         try {
           const img = mime === 'image/png'
             ? await pdfDoc.embedPng(bytes)
             : await pdfDoc.embedJpg(bytes)
 
           const p = pdfDoc.addPage([PW, PH])
-
-          // Header
           const labelY = PH - M
           p.drawText(trunc(service.description, 62), {
             x: M, y: labelY, size: 11, font: bold, color: ink,
@@ -235,12 +225,11 @@ export async function POST(req: NextRequest) {
             thickness: 0.3, color: gold,
           })
 
-          // Image area: below header down to bottom margin
-          const imgAreaTop  = labelY - 30
-          const imgAreaH    = imgAreaTop - M
-          const scaled      = img.scaleToFit(CW, imgAreaH)
-          const imgX        = M + (CW - scaled.width) / 2
-          const imgY        = imgAreaTop - scaled.height
+          const imgAreaTop = labelY - 30
+          const imgAreaH   = imgAreaTop - M
+          const scaled     = img.scaleToFit(CW, imgAreaH)
+          const imgX       = M + (CW - scaled.width) / 2
+          const imgY       = imgAreaTop - scaled.height
 
           p.drawImage(img, { x: imgX, y: imgY, width: scaled.width, height: scaled.height })
         } catch {
@@ -252,15 +241,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── Return PDF ─────────────────────────────────────────────────────────────
+    // ── Return PDF ────────────────────────────────────────────────────────────
 
     const pdfBytes = await pdfDoc.save()
+    const unitStr = (unit?.unit_number ?? 'unit').replace(/[^a-zA-Z0-9]/g, '-')
+    const filename = `${unitStr}-${record.type}-invoices.pdf`
 
     return new NextResponse(Buffer.from(pdfBytes), {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': 'attachment',
+        'Content-Disposition': `attachment; filename="${filename}"`,
       },
     })
   } catch (err) {

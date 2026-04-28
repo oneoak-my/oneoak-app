@@ -37,8 +37,6 @@ export default function RecordDetailPage() {
   const [showEditRecord, setShowEditRecord] = useState(false)
   const [editingService, setEditingService] = useState<Service | null>(null)
   const [showReport, setShowReport] = useState(false)
-  const [bundleLoading, setBundleLoading] = useState(false)
-  const [bundleError, setBundleError] = useState('')
 
   const load = useCallback(async () => {
     try {
@@ -63,7 +61,7 @@ export default function RecordDetailPage() {
     if (!confirm('Delete this record and all its services?')) return
     try {
       await deleteRecord(id)
-      router.back()
+      router.push(record?.unit_id ? `/units/${record.unit_id}` : '/')
     } catch (e) {
       console.error(e)
     }
@@ -112,54 +110,6 @@ export default function RecordDetailPage() {
     }
   }
 
-  async function handleDownloadBundle() {
-    if (!record) return
-    setBundleLoading(true)
-    setBundleError('')
-    try {
-      const res = await fetch('/api/invoice-bundle', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recordId: record.id }),
-      })
-      if (!res.ok) {
-        const msg = await res.text().catch(() => '')
-        throw new Error(msg || `Server error ${res.status}`)
-      }
-      const blob = await res.blob()
-
-      // Build filename: unit-recordtype-DD-Mon-YYYY-invoices.pdf
-      const unitStr = (record.unit?.unit_number ?? 'unit').replace(/[^a-zA-Z0-9]/g, '-')
-      const dateStr = record.date
-        ? new Date(record.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-')
-        : 'date'
-      const filename = `${unitStr}-${record.type}-${dateStr}-invoices.pdf`
-
-      const url = URL.createObjectURL(blob)
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
-
-      if (isIOS) {
-        // iOS Safari doesn't honour a.download on blob URLs — open inline instead
-        window.open(url, '_blank')
-        setTimeout(() => URL.revokeObjectURL(url), 3000)
-      } else {
-        const a = document.createElement('a')
-        a.href = url
-        a.download = filename
-        a.style.position = 'fixed'
-        a.style.left = '-9999px'
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-        setTimeout(() => URL.revokeObjectURL(url), 1000)
-      }
-    } catch (e) {
-      console.error('Invoice bundle error:', e)
-      setBundleError(e instanceof Error ? e.message : 'Failed to generate PDF. Please try again.')
-    } finally {
-      setBundleLoading(false)
-    }
-  }
 
   if (loading) {
     return (
@@ -198,16 +148,16 @@ export default function RecordDetailPage() {
         </button>
         <div className="flex items-center gap-2">
           {hasInvoices && (
-            <Button
-              variant="ghost"
-              size="sm"
-              icon={<Paperclip size={14} />}
-              onClick={handleDownloadBundle}
-              loading={bundleLoading}
+            <a
+              href={`/api/invoice-bundle?recordId=${record.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
               style={{ minHeight: '44px', minWidth: '44px' }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-transparent hover:bg-[#262018] text-[#a89d84] hover:text-[#f5f0e8] transition-all duration-150"
             >
-              {bundleLoading ? 'Generating…' : 'Invoices'}
-            </Button>
+              <Paperclip size={14} />
+              Invoices
+            </a>
           )}
           <Button variant="ghost" size="sm" icon={<Share2 size={14} />} onClick={() => setShowReport(true)}>
             Report
@@ -217,10 +167,6 @@ export default function RecordDetailPage() {
             className="text-red-400 hover:text-red-300" />
         </div>
       </div>
-
-      {bundleError && (
-        <p className="text-xs text-red-400 text-center -mt-2">{bundleError}</p>
-      )}
 
       {/* Header */}
       <div>
