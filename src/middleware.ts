@@ -5,7 +5,7 @@ import type { NextRequest } from 'next/server'
 // This middleware is intentionally a passthrough — the Supabase JS client
 // stores sessions in localStorage, not cookies, so server-side checks
 // always see "no session" and cause redirect loops.
-export function middleware(_request: NextRequest) {
+export function middleware(_: NextRequest) {
   return NextResponse.next()
 }
 

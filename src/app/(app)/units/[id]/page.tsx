@@ -10,7 +10,7 @@ import { getUnit, createRecord, updateUnit, deleteUnit, extractError } from '@/l
 import type { Unit, PropertyRecord, UnitStatusTag, BadgeVariant } from '@/lib/types'
 import { BUILDINGS, RECORD_TYPE_LABELS, UTILITY_OPTIONS, ALL_UNIT_TAGS, UNIT_TAG_STYLES } from '@/lib/types'
 import { formatDate, formatCurrency } from '@/lib/utils'
-import Badge, { UnitTagBadges } from '@/components/ui/Badge'
+import { UnitTagBadges } from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
 import Modal from '@/components/ui/Modal'

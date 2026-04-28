@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import {
   ArrowLeft, Plus, Trash2, Edit2, Share2, Upload, Check, Clock, X,
@@ -329,12 +329,7 @@ export default function RecordDetailPage() {
       )}
 
       {/* Notes */}
-      {record.notes && (
-        <div className="rounded-xl bg-[#1e1a14] border border-[#332c20] px-4 py-3">
-          <p className="text-xs text-[#7c6f54] mb-1 font-medium">Notes</p>
-          <p className="text-sm text-[#a89d84]">{record.notes}</p>
-        </div>
-      )}
+      <NotesSection record={record} />
 
       {/* Tasks */}
       <TaskSection record={record} />
@@ -841,5 +836,86 @@ function EditRecordModal({
         </div>
       </form>
     </Modal>
+  )
+}
+
+// ── Notes Section ─────────────────────────────────────────────────────────────
+
+function fmtDateTime(date: Date): string {
+  return date.toLocaleDateString('en-GB', {
+    day: 'numeric', month: 'short', year: 'numeric',
+    hour: 'numeric', minute: '2-digit',
+  })
+}
+
+function NotesSection({ record }: { record: PropertyRecord }) {
+  const [value, setValue] = useState(record.notes ?? '')
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Auto-grow: recalculate height whenever value changes
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = Math.max(100, el.scrollHeight) + 'px'
+  }, [value])
+
+  // Clear pending timer on unmount
+  useEffect(() => {
+    return () => { if (timerRef.current) clearTimeout(timerRef.current) }
+  }, [])
+
+  function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const text = e.target.value
+    setValue(text)
+    setSaveState('idle')
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(async () => {
+      setSaveState('saving')
+      try {
+        await updateRecord(record.id, { notes: text.trim() || null })
+        setLastSavedAt(new Date())
+        setSaveState('saved')
+        setTimeout(() => setSaveState((s) => s === 'saved' ? 'idle' : s), 2000)
+      } catch (err) {
+        console.error('[NotesSection] save error:', err)
+        setSaveState('idle')
+      }
+    }, 1000)
+  }
+
+  const displayTimestamp = lastSavedAt
+    ? fmtDateTime(lastSavedAt)
+    : record.updated_at ? fmtDateTime(new Date(record.updated_at)) : null
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-[#7c6f54] uppercase tracking-wider">Notes</p>
+        <span className={`text-xs transition-opacity duration-500 ${
+          saveState === 'saving' ? 'opacity-100 text-[#5c5040]'
+          : saveState === 'saved' ? 'opacity-100 text-emerald-400'
+          : 'opacity-0'
+        }`}>
+          {saveState === 'saving' ? 'Saving…' : 'Saved ✓'}
+        </span>
+      </div>
+      <div className="rounded-xl border border-[#332c20] bg-[#1e1a14] overflow-hidden">
+        <textarea
+          ref={textareaRef}
+          value={value}
+          onChange={handleChange}
+          placeholder="Add notes about this unit, progress updates, or important information..."
+          className="w-full px-4 py-3 text-sm text-[#f5f0e8] placeholder-[#4a4030] bg-transparent resize-none outline-none leading-relaxed"
+          style={{ minHeight: '100px' }}
+        />
+      </div>
+      {displayTimestamp && (
+        <p className="text-[10px] text-[#5c5040]">Last updated: {displayTimestamp}</p>
+      )}
+    </div>
   )
 }

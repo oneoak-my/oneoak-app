@@ -15,7 +15,6 @@ import { BUILDINGS, RECORD_STATUS_COLORS, RECORD_TYPE_LABELS } from '@/lib/types
 import { formatCurrency, formatDate } from '@/lib/utils'
 import Badge, { statusBadge } from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
-import Card from '@/components/ui/Card'
 import Modal from '@/components/ui/Modal'
 import Input, { Select } from '@/components/ui/Input'
 
