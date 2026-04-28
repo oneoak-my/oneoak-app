@@ -51,7 +51,8 @@ function RecordsContent() {
       <div className="flex items-center gap-3">
         <button
           onClick={() => router.back()}
-          className="p-2 -ml-2 rounded-lg text-[#7c6f54] hover:text-[#f5f0e8] hover:bg-[#262018] transition-colors"
+          style={{ minWidth: '44px', minHeight: '44px' }}
+          className="flex items-center gap-1.5 px-3 py-2 -ml-2 rounded-lg text-[#7c6f54] hover:text-[#f5f0e8] active:bg-black/10 transition-colors"
         >
           <ArrowLeft size={18} />
         </button>

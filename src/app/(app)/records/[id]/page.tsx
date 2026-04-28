@@ -136,16 +136,23 @@ export default function RecordDetailPage() {
       const filename = `${unitStr}-${record.type}-${dateStr}-invoices.pdf`
 
       const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = filename
-      a.style.position = 'fixed'
-      a.style.left = '-9999px'
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      // Delay revoke so the browser has time to start the download
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+
+      if (isIOS) {
+        // iOS Safari doesn't honour a.download on blob URLs — open inline instead
+        window.open(url, '_blank')
+        setTimeout(() => URL.revokeObjectURL(url), 3000)
+      } else {
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        a.style.position = 'fixed'
+        a.style.left = '-9999px'
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        setTimeout(() => URL.revokeObjectURL(url), 1000)
+      }
     } catch (e) {
       console.error('Invoice bundle error:', e)
       setBundleError(e instanceof Error ? e.message : 'Failed to generate PDF. Please try again.')
@@ -180,7 +187,8 @@ export default function RecordDetailPage() {
       <div className="flex items-center justify-between">
         <button
           onClick={() => router.back()}
-          className="flex items-center gap-1.5 text-[#7c6f54] hover:text-[#f5f0e8] transition-colors"
+          style={{ minWidth: '44px', minHeight: '44px' }}
+          className="flex items-center gap-1.5 px-3 py-2 -ml-2 rounded-lg text-[#7c6f54] hover:text-[#f5f0e8] active:bg-black/10 transition-colors"
         >
           <ArrowLeft size={16} />
           <span className="text-sm">{record.unit?.unit_number}</span>
@@ -193,8 +201,9 @@ export default function RecordDetailPage() {
               icon={<Paperclip size={14} />}
               onClick={handleDownloadBundle}
               loading={bundleLoading}
+              style={{ minHeight: '44px', minWidth: '44px' }}
             >
-              Invoices
+              {bundleLoading ? 'Generating…' : 'Invoices'}
             </Button>
           )}
           <Button variant="ghost" size="sm" icon={<Share2 size={14} />} onClick={() => setShowReport(true)}>
