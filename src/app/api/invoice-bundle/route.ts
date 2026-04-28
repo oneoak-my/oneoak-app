@@ -104,7 +104,6 @@ export async function GET(request: Request) {
 
     // Logo — fetch from public URL so it works in serverless
     try {
-      const logoUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL ? new URL(request.url).origin : ''}/logo.png`
       const logoBytes = await fetchBytes(new URL('/logo.png', request.url).toString())
       if (logoBytes) {
         const logoImg = await pdfDoc.embedPng(logoBytes)
