@@ -31,9 +31,28 @@ export function calcDeposits(monthlyRental: number) {
 export function calcRefund(record: PropertyRecord): number {
   const totalDeposits = (record.security_deposit ?? 0) + (record.utility_deposit ?? 0)
   const totalDeductions = (record.services ?? [])
-    .filter((s) => s.payment_by === 'Deduct from Deposit')
+    .filter((s) =>
+      s.payment_by === 'Deduct from Deposit' ||
+      s.payment_by === 'Deduct from Deposit + Pay by One Oak',
+    )
     .reduce((sum, s) => sum + (s.amount ?? 0), 0)
   return totalDeposits - totalDeductions
+}
+
+// ── Service ordering ──────────────────────────────────────────────────────────
+
+function servicePriority(s: Service): number {
+  const d = s.description.toLowerCase()
+  if (d === 'outstanding electricity bill') return 0
+  if (d === 'outstanding water bill') return 1
+  if (d === 'outstanding indah water') return 2
+  if (d.includes('clean') || d.includes('steam')) return 3
+  if (d.includes('air cond')) return 4
+  return 5
+}
+
+function sortByPriority(services: Service[]): Service[] {
+  return [...services].sort((a, b) => servicePriority(a) - servicePriority(b))
 }
 
 // ── WhatsApp Reports ──────────────────────────────────────────────────────────
@@ -66,7 +85,7 @@ function groupByProvider(services: Service[]): ProviderGroup[] {
   return Array.from(map.values())
 }
 
-// Block for check-in / maintenance reports
+// Block for maintenance reports
 function providerBlock(g: ProviderGroup): string[] {
   const lines: string[] = []
   if (g.services.length === 1) {
@@ -92,7 +111,7 @@ function providerBlock(g: ProviderGroup): string[] {
 
 export function generateMoveInReport(record: PropertyRecord): string {
   const unit = record.unit
-  const services = record.services ?? []
+  const services = sortByPriority(record.services ?? [])
 
   const lines: string[] = [
     `🏠 *MOVE-IN REPORT*`,
@@ -150,17 +169,23 @@ const ROMAN_NUMERALS = [
 
 export function generateMoveOutReport(record: PropertyRecord): string {
   const unit = record.unit
-  const services = record.services ?? []
+  const allServices = record.services ?? []
 
-  // Only "Deduct from Deposit" services count toward the balance — sum all of them first
-  const deductServices = services.filter((s) => s.payment_by === 'Deduct from Deposit')
+  // Services that count toward deposit deduction
+  const deductServices = sortByPriority(
+    allServices.filter(
+      (s) =>
+        s.payment_by === 'Deduct from Deposit' ||
+        s.payment_by === 'Deduct from Deposit + Pay by One Oak',
+    ),
+  )
   const totalDeposits = (record.security_deposit ?? 0) + (record.utility_deposit ?? 0)
   const totalDeductions = deductServices.reduce((sum, s) => sum + s.amount, 0)
   const balance = totalDeposits - totalDeductions
 
   const lines: string[] = [
     `🏠 *MOVE-OUT REPORT*`,
-    `📍 Unit: ${unit?.unit_number ?? ''} | ${unit?.building ?? ''}`,
+    `📍 Unit: ${unit?.unit_number ?? ''}`,
     `👤 Tenant: ${record.tenant_name ?? ''}`,
     `📅 Move-out Date: ${formatDate(record.date)}`,
     `💰 Monthly Rental: ${formatCurrency(record.monthly_rental)}`,
@@ -182,7 +207,6 @@ export function generateMoveOutReport(record: PropertyRecord): string {
   if (deductServices.length === 0) {
     lines.push(`- Nil`)
   } else {
-    // Group deduct services by provider — one roman numeral per provider group
     const deductGroups = groupByProvider(deductServices)
     deductGroups.forEach((g, i) => {
       const numeral = ROMAN_NUMERALS[i] ?? String(i + 1)
@@ -213,7 +237,7 @@ export function generateMoveOutReport(record: PropertyRecord): string {
     lines.push(`💵 ❗ Tenant owes: ${formatCurrency(Math.abs(balance))}`)
   }
 
-  // Tenant bank details — only if any field is filled
+  // Tenant bank details
   if (record.tenant_bank_holder || record.tenant_bank_name || record.tenant_bank_account) {
     lines.push(
       ``,
@@ -222,11 +246,13 @@ export function generateMoveOutReport(record: PropertyRecord): string {
     )
   }
 
-  // Attention to Owner — Deduct from Deposit or Pay by Owner, grouped by provider
-  const ownerServices = services.filter(
-    (s) =>
-      (s.payment_by === 'Deduct from Deposit' || s.payment_by === 'Pay by Owner') &&
-      s.provider && s.provider.bank_name && s.provider.bank_account,
+  // Attention to Owner — Deduct from Deposit and Pay by Owner only (must have bank details)
+  const ownerServices = sortByPriority(
+    allServices.filter(
+      (s) =>
+        (s.payment_by === 'Deduct from Deposit' || s.payment_by === 'Pay by Owner') &&
+        s.provider && s.provider.bank_name && s.provider.bank_account,
+    ),
   )
 
   if (ownerServices.length > 0) {
@@ -237,16 +263,17 @@ export function generateMoveOutReport(record: PropertyRecord): string {
       `📌 *Attention to Owner*`,
       `Kindly make payment to the following service providers:`,
     )
-    groupByProvider(ownerServices).forEach((g) => {
+    groupByProvider(ownerServices).forEach((g, i) => {
+      const num = i + 1
       lines.push(``)
       if (g.services.length === 1) {
         const s = g.services[0]
-        lines.push(`* ${s.description}`)
+        lines.push(`${num}. * ${s.description}`)
         if (s.notes) lines.push(`- ${s.notes}`)
         lines.push(`Amount: ${formatCurrency(s.amount)}`)
         lines.push(`👉 ${g.providerName} | ${g.bankName} | ${g.bankAccount}`)
       } else {
-        lines.push(`* ${g.providerName}`)
+        lines.push(`${num}. * ${g.providerName}`)
         g.services.forEach((s) => {
           lines.push(`  - ${s.description}: ${formatCurrency(s.amount)}`)
           if (s.notes) lines.push(`    ${s.notes}`)
@@ -254,6 +281,19 @@ export function generateMoveOutReport(record: PropertyRecord): string {
         lines.push(`Total amount: ${formatCurrency(g.total)}`)
         lines.push(`👉 ${g.providerName} | ${g.bankName} | ${g.bankAccount}`)
       }
+    })
+  }
+
+  // Subsidized section — Deduct from Deposit + Pay by One Oak
+  const subsidizedServices = sortByPriority(
+    allServices.filter((s) => s.payment_by === 'Deduct from Deposit + Pay by One Oak'),
+  )
+
+  if (subsidizedServices.length > 0) {
+    lines.push(``, `📌 *Subsidized by Vivian/Tony Ong*`)
+    subsidizedServices.forEach((s) => {
+      lines.push(`- ${s.description}: ${formatCurrency(s.amount)}`)
+      if (s.notes) lines.push(`  ${s.notes}`)
     })
   }
 

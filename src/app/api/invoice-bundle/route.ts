@@ -69,16 +69,22 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Record not found' }, { status: 404 })
     }
 
-    const services = (record.services ?? []) as Array<{
+    const allServices = (record.services ?? []) as Array<{
       id: string
       description: string
       amount: number
+      payment_by: string
       invoice_url: string | null
       invoice_url_2: string | null
       invoice_url_3: string | null
       notes: string | null
       provider: { name: string; bank_name: string; bank_account: string } | null
     }>
+
+    // Only include Deduct from Deposit and Tenant Pay Direct in the invoice bundle
+    const services = allServices.filter(
+      (s) => s.payment_by === 'Deduct from Deposit' || s.payment_by === 'Tenant Pay Direct',
+    )
     const unit = record.unit as { unit_number: string; building: string } | null
 
     // ── Build PDF ─────────────────────────────────────────────────────────────
