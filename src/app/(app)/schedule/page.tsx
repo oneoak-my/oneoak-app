@@ -20,6 +20,13 @@ function formatTimeDisplay(timeStr: string | null | undefined): string {
   return `${hour12}:${String(m).padStart(2, '0')} ${ampm}`
 }
 
+/** Short version for mobile: "11:30" with no AM/PM */
+function formatTimeShort(timeStr: string | null | undefined): string {
+  if (!timeStr) return '—'
+  const [h, m] = timeStr.split(':').map(Number)
+  return `${h}:${String(m).padStart(2, '0')}`
+}
+
 function formatTimeWa(timeStr: string | null | undefined): string {
   if (!timeStr) return 'TBC'
   const [h, m] = timeStr.split(':').map(Number)
@@ -34,6 +41,15 @@ function formatDateLong(dateStr: string): string {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
+  })
+}
+
+/** Short version for mobile: "30 Apr" with no year */
+function formatDateShort(dateStr: string): string {
+  const [y, mo, d] = dateStr.split('-').map(Number)
+  return new Date(y, mo - 1, d).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
   })
 }
 
@@ -137,12 +153,12 @@ const selectCls =
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function SchedulePage() {
-  const [records, setRecords]         = useState<CheckinRecord[]>([])
-  const [loading, setLoading]         = useState(true)
-  const [monthFilter, setMonthFilter] = useState('all')
+  const [records, setRecords]           = useState<CheckinRecord[]>([])
+  const [loading, setLoading]           = useState(true)
+  const [monthFilter, setMonthFilter]   = useState('all')
   const [listerFilter, setListerFilter] = useState('all')
-  const [sortOrder, setSortOrder]     = useState<'asc' | 'desc'>('asc')
-  const [toast, setToast]             = useState<string | null>(null)
+  const [sortOrder, setSortOrder]       = useState<'asc' | 'desc'>('asc')
+  const [toast, setToast]               = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -179,9 +195,7 @@ export default function SchedulePage() {
     return result
   }, [records, monthFilter, listerFilter, sortOrder])
 
-  const showToast = useCallback((url: string) => {
-    setToast(url)
-  }, [])
+  const showToast = useCallback((url: string) => { setToast(url) }, [])
 
   return (
     <div className="py-5 space-y-4">
@@ -232,32 +246,36 @@ export default function SchedulePage() {
           No check-ins found for the selected filter
         </div>
       ) : (
-        <div className="overflow-x-auto border-t border-[#1e1a14]">
-          <table className="w-full border-collapse text-sm" style={{ minWidth: '860px' }}>
-            <thead>
-              <tr className="border-b border-[#332c20] bg-[#0e0c08]">
-                <th className="sticky left-0 z-[2] bg-[#0e0c08] px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '130px' }}>
-                  Move-in Date
-                </th>
-                <th className="sticky bg-[#0e0c08] px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider whitespace-nowrap border-r border-[#332c20]" style={{ left: '130px', zIndex: 1, minWidth: '90px' }}>
-                  Unit
-                </th>
-                <th className="px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider" style={{ minWidth: '120px' }}>Tenant</th>
-                <th className="px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '110px' }}>Appt Time</th>
-                <th className="px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '70px' }}>Tasks</th>
-                <th className="px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '80px' }}>Lister</th>
-                <th className="px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '110px' }}>CoA</th>
-                <th className="px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '60px' }}>Remind</th>
-                <th className="px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '80px' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((record) => (
-                <ScheduleRow key={record.id} record={record} onSaved={load} onToast={showToast} />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <div className="overflow-x-auto border-t border-[#1e1a14]">
+            <table className="w-full border-collapse text-xs sm:text-[13px]" style={{ minWidth: '620px' }}>
+              <thead>
+                <tr className="border-b border-[#332c20] bg-[#0e0c08]">
+                  <th className="sticky left-0 z-[2] bg-[#0e0c08] px-2 sm:px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '85px' }}>
+                    Date
+                  </th>
+                  <th className="sticky bg-[#0e0c08] px-2 sm:px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider whitespace-nowrap border-r border-[#332c20]" style={{ left: '85px', zIndex: 1, minWidth: '90px' }}>
+                    Unit
+                  </th>
+                  <th className="px-2 sm:px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider" style={{ minWidth: '90px' }}>Tenant</th>
+                  <th className="px-2 sm:px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '60px' }}>Time</th>
+                  <th className="px-2 sm:px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '50px' }}>Tasks</th>
+                  <th className="px-2 sm:px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '55px' }}>Lister</th>
+                  <th className="px-2 sm:px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '60px' }}>CoA</th>
+                  <th className="px-2 sm:px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '44px' }}>WA</th>
+                  <th className="px-2 sm:px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '64px' }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((record) => (
+                  <ScheduleRow key={record.id} record={record} onSaved={load} onToast={showToast} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {/* Mobile scroll hint */}
+          <p className="sm:hidden px-4 text-[10px] text-[#5c5040] text-right -mt-1">scroll →</p>
+        </>
       )}
 
       {toast && <CalendarToast url={toast} onDismiss={() => setToast(null)} />}
@@ -299,24 +317,19 @@ function ScheduleRow({
   const allDone        = tasks.length > 0 && completedCount === tasks.length
   const noneDone       = completedCount === 0
 
-  const dotColor = allDone    ? 'bg-emerald-500'
-    : !noneDone              ? 'bg-orange-500'
-    : isUrgent               ? 'bg-red-500'
+  const dotColor = allDone  ? 'bg-emerald-500'
+    : !noneDone             ? 'bg-orange-500'
+    : isUrgent              ? 'bg-red-500'
     : 'bg-[#3d3628]'
 
-  let dateCls   = 'text-[#f5f0e8]'
-  let dateLabel = formatDate(moveInDate)
-  if (isPast) {
-    dateCls   = 'text-red-500 line-through'
-  } else if (isToday) {
-    dateCls   = 'text-red-400 font-semibold'
-    dateLabel = 'Today'
-  } else if (isTomorrow) {
-    dateCls   = 'text-orange-400 font-semibold'
-    dateLabel = 'Tomorrow'
-  } else if (isUrgent) {
-    dateCls   = 'text-red-400'
-  }
+  let dateCls = 'text-[#f5f0e8]'
+  if (isPast)     dateCls = 'text-red-500 line-through'
+  else if (isToday)    dateCls = 'text-red-400 font-semibold'
+  else if (isTomorrow) dateCls = 'text-orange-400 font-semibold'
+  else if (isUrgent)   dateCls = 'text-red-400'
+
+  const dateLabelFull  = isToday ? 'Today' : isTomorrow ? 'Tomorrow' : formatDate(moveInDate)
+  const dateLabelShort = isToday ? 'Today' : isTomorrow ? 'Tmrw'     : formatDateShort(moveInDate)
 
   // Close WA popup on outside click
   useEffect(() => {
@@ -377,20 +390,21 @@ function ScheduleRow({
     setCoaValue(record.co_agent ?? '')
   }
 
-  const stickyBg = isUrgent ? 'rgb(10,5,3)' : '#0e0c08'
-  const rowBg    = isUrgent ? 'bg-red-500/[0.03]' : ''
+  const rowBg = isUrgent ? 'bg-red-500/[0.03]' : ''
 
   return (
     <tr className={`border-b border-[#1e1a14] hover:bg-[#1e1a14] transition-colors ${rowBg}`}>
-      {/* Move-in Date — sticky col 1 */}
-      <td className="sticky left-0 z-[2] px-4 py-3 whitespace-nowrap text-xs" style={{ background: stickyBg }}>
+
+      {/* Move-in Date — sticky col 1
+          bg-[#0e0c08] lets warm theme CSS override to #F7F5F2 automatically */}
+      <td className={`sticky left-0 z-[2] bg-[#0e0c08] px-2 sm:px-4 py-2 sm:py-3 whitespace-nowrap font-mono`}>
         {editingDate ? (
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <input
               type="date"
               value={dateValue}
               onChange={(e) => setDateValue(e.target.value)}
-              className="rounded bg-[#262018] border border-[#332c20] text-xs text-[#f5f0e8] px-1.5 py-1 focus:outline-none focus:border-gold-500/60 w-32"
+              className="rounded bg-[#262018] border border-[#332c20] text-xs text-[#f5f0e8] px-1.5 py-1 focus:outline-none focus:border-gold-500/60 w-28"
             />
             <button onClick={saveDate} disabled={saving} className="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium">
               {saving ? '…' : '✓'}
@@ -401,33 +415,34 @@ function ScheduleRow({
           </div>
         ) : (
           <button onClick={() => setEditingDate(true)} className={`hover:opacity-70 transition-opacity ${dateCls}`}>
-            {dateLabel}
+            <span className="sm:hidden">{dateLabelShort}</span>
+            <span className="hidden sm:inline">{dateLabelFull}</span>
           </button>
         )}
       </td>
 
       {/* Unit — sticky col 2 */}
       <td
-        className="sticky px-4 py-3 whitespace-nowrap text-xs font-semibold text-[#f5f0e8] border-r border-[#332c20]"
-        style={{ left: '130px', zIndex: 1, background: stickyBg }}
+        className="sticky bg-[#0e0c08] px-2 sm:px-4 py-2 sm:py-3 whitespace-nowrap font-semibold text-[#f5f0e8] border-r border-[#332c20] truncate max-w-[90px]"
+        style={{ left: '85px', zIndex: 1 }}
       >
         {record.unit?.unit_number}
       </td>
 
       {/* Tenant */}
-      <td className="px-4 py-3 text-xs text-[#7c6f54] max-w-[140px] truncate">
+      <td className="px-2 sm:px-4 py-2 sm:py-3 text-[#7c6f54] max-w-[100px] truncate">
         {record.tenant_name ?? '—'}
       </td>
 
       {/* Appt Time */}
-      <td className="px-4 py-3 whitespace-nowrap text-xs">
+      <td className="px-2 sm:px-4 py-2 sm:py-3 whitespace-nowrap font-mono">
         {editingTime ? (
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <input
               type="time"
               value={timeValue}
               onChange={(e) => setTimeValue(e.target.value)}
-              className="rounded bg-[#262018] border border-[#332c20] text-xs text-[#f5f0e8] px-1.5 py-1 focus:outline-none focus:border-gold-500/60 w-28"
+              className="rounded bg-[#262018] border border-[#332c20] text-xs text-[#f5f0e8] px-1.5 py-1 focus:outline-none focus:border-gold-500/60 w-24"
             />
             <button onClick={saveTime} disabled={saving} className="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium">
               {saving ? '…' : '✓'}
@@ -438,30 +453,32 @@ function ScheduleRow({
           </div>
         ) : (
           <button onClick={() => setEditingTime(true)} className="text-[#a89d84] hover:text-gold-400 underline underline-offset-2 transition-colors">
-            {formatTimeDisplay(record.appointment_time)}
+            <span className="sm:hidden">{formatTimeShort(record.appointment_time)}</span>
+            <span className="hidden sm:inline">{formatTimeDisplay(record.appointment_time)}</span>
           </button>
         )}
       </td>
 
       {/* Tasks */}
-      <td className="px-4 py-3 whitespace-nowrap">
+      <td className="px-2 sm:px-4 py-2 sm:py-3 whitespace-nowrap">
         <div className="flex items-center gap-1.5">
-          <div className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
-          <span className="text-xs text-[#a89d84]">
+          <div className={`w-2 h-2 rounded-full shrink-0 hidden sm:block ${dotColor}`} />
+          <span className="text-[#a89d84] font-mono">
             {tasks.length > 0 ? `${completedCount}/${tasks.length}` : '—'}
           </span>
         </div>
       </td>
 
       {/* Lister */}
-      <td className="px-4 py-3 whitespace-nowrap text-xs text-[#5c5040]">
-        {record.unit?.lister ?? '—'}
+      <td className="px-2 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-[#5c5040]">
+        <span className="sm:hidden">{(record.unit?.lister ?? '—').split(' ')[0]}</span>
+        <span className="hidden sm:inline">{record.unit?.lister ?? '—'}</span>
       </td>
 
       {/* CoA */}
-      <td className="px-4 py-3 whitespace-nowrap text-xs">
+      <td className="px-2 sm:px-4 py-2 sm:py-3 whitespace-nowrap">
         {editingCoA ? (
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             {coaMode === 'select' ? (
               <select
                 defaultValue=""
@@ -485,7 +502,7 @@ function ScheduleRow({
                 onChange={(e) => setCoaValue(e.target.value)}
                 placeholder="Co-agent name"
                 autoFocus
-                className="rounded bg-[#262018] border border-[#332c20] text-xs text-[#f5f0e8] px-1.5 py-1 focus:outline-none focus:border-gold-500/60 w-28"
+                className="rounded bg-[#262018] border border-[#332c20] text-xs text-[#f5f0e8] px-1.5 py-1 focus:outline-none focus:border-gold-500/60 w-24"
               />
             )}
             <button onClick={saveCoA} disabled={saving} className="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium">
@@ -500,7 +517,7 @@ function ScheduleRow({
               setCoaValue(record.co_agent ?? '')
               setEditingCoA(true)
             }}
-            className="text-[#5c5040] hover:text-[#a89d84] transition-colors"
+            className="text-[#5c5040] hover:text-[#a89d84] transition-colors truncate max-w-[80px] block"
           >
             {record.co_agent ?? 'N/A'}
           </button>
@@ -508,7 +525,7 @@ function ScheduleRow({
       </td>
 
       {/* WA Remind */}
-      <td className="px-4 py-3 whitespace-nowrap">
+      <td className="px-2 sm:px-4 py-2 sm:py-3 whitespace-nowrap">
         <div className="relative" ref={waRef}>
           <button
             onClick={() => setShowWa((v) => !v)}
@@ -550,7 +567,7 @@ function ScheduleRow({
       </td>
 
       {/* Actions */}
-      <td className="px-4 py-3 whitespace-nowrap">
+      <td className="px-2 sm:px-4 py-2 sm:py-3 whitespace-nowrap">
         <div className="flex items-center gap-1">
           <a
             href={buildCalendarUrl(record)}
