@@ -38,18 +38,54 @@ export function calcRefund(record: PropertyRecord): number {
 
 // ── WhatsApp Reports ──────────────────────────────────────────────────────────
 
-function serviceBlock(s: Service): string[] {
-  const lines = [
-    `✅ Pay to: ${s.provider?.name ?? 'N/A'}`,
-    `Services: ${s.description}`,
-  ]
-  if (s.notes) lines.push(s.notes)
-  lines.push(`Amount: ${formatCurrency(s.amount)}`)
-  if (s.provider) {
-    lines.push(
-      `👉 Bank Details:`,
-      `${s.provider.name} | ${s.provider.bank_name} | ${s.provider.bank_account}`,
-    )
+type ProviderGroup = {
+  providerName: string
+  bankName: string
+  bankAccount: string
+  services: Service[]
+  total: number
+}
+
+function groupByProvider(services: Service[]): ProviderGroup[] {
+  const map = new Map<string, ProviderGroup>()
+  for (const s of services) {
+    const key = s.provider?.name ?? 'Others'
+    if (!map.has(key)) {
+      map.set(key, {
+        providerName: s.provider?.name ?? 'Others',
+        bankName: s.provider?.bank_name ?? '',
+        bankAccount: s.provider?.bank_account ?? '',
+        services: [],
+        total: 0,
+      })
+    }
+    const g = map.get(key)!
+    g.services.push(s)
+    g.total += s.amount ?? 0
+  }
+  return Array.from(map.values())
+}
+
+// Block for check-in / maintenance reports
+function providerBlock(g: ProviderGroup): string[] {
+  const lines: string[] = []
+  if (g.services.length === 1) {
+    const s = g.services[0]
+    lines.push(`✅ Pay to: ${g.providerName}`)
+    lines.push(`Services: ${s.description}`)
+    if (s.notes) lines.push(s.notes)
+    lines.push(`Amount: ${formatCurrency(s.amount)}`)
+  } else {
+    lines.push(`✅ Pay to: ${g.providerName}`)
+    lines.push(`Services:`)
+    g.services.forEach((s) => {
+      lines.push(`- ${s.description}: ${formatCurrency(s.amount)}`)
+      if (s.notes) lines.push(`  - ${s.notes}`)
+    })
+    lines.push(`Total: ${formatCurrency(g.total)}`)
+  }
+  if (g.bankName && g.bankAccount) {
+    lines.push(`👉 Bank Details:`, `${g.providerName} | ${g.bankName} | ${g.bankAccount}`)
   }
   return lines
 }
@@ -74,8 +110,8 @@ export function generateMoveInReport(record: PropertyRecord): string {
 
   if (services.length > 0) {
     lines.push(``, `🔧 *Services*`)
-    services.forEach((s) => {
-      lines.push(``, ...serviceBlock(s))
+    groupByProvider(services).forEach((g) => {
+      lines.push(``, ...providerBlock(g))
     })
     lines.push(``, `*Total Services: ${formatCurrency(services.reduce((sum, s) => sum + s.amount, 0))}*`)
   }
@@ -94,7 +130,7 @@ export function generateMoveOutReport(record: PropertyRecord): string {
   const unit = record.unit
   const services = record.services ?? []
 
-  // Only services deducted from the deposit count toward the balance calculation
+  // Only "Deduct from Deposit" services count toward the balance — sum all of them first
   const deductServices = services.filter((s) => s.payment_by === 'Deduct from Deposit')
   const totalDeposits = (record.security_deposit ?? 0) + (record.utility_deposit ?? 0)
   const totalDeductions = deductServices.reduce((sum, s) => sum + s.amount, 0)
@@ -124,12 +160,24 @@ export function generateMoveOutReport(record: PropertyRecord): string {
   if (deductServices.length === 0) {
     lines.push(`- Nil`)
   } else {
-    deductServices.forEach((s, i) => {
+    // Group deduct services by provider — one roman numeral per provider group
+    const deductGroups = groupByProvider(deductServices)
+    deductGroups.forEach((g, i) => {
       const numeral = ROMAN_NUMERALS[i] ?? String(i + 1)
-      lines.push(`${numeral}) ${s.description}`)
-      if (s.notes) lines.push(`- ${s.notes}`)
-      lines.push(`Amount: ${formatCurrency(s.amount)}`)
-      if (i < deductServices.length - 1) lines.push(``)
+      if (g.services.length === 1) {
+        const s = g.services[0]
+        lines.push(`${numeral}) ${s.description}`)
+        if (s.notes) lines.push(`- ${s.notes}`)
+        lines.push(`Amount: ${formatCurrency(s.amount)}`)
+      } else {
+        lines.push(`${numeral}) ${g.providerName}`)
+        g.services.forEach((s) => {
+          lines.push(`   - ${s.description}: ${formatCurrency(s.amount)}`)
+          if (s.notes) lines.push(`     ${s.notes}`)
+        })
+        lines.push(`   Total: ${formatCurrency(g.total)}`)
+      }
+      if (i < deductGroups.length - 1) lines.push(``)
     })
   }
 
@@ -152,7 +200,7 @@ export function generateMoveOutReport(record: PropertyRecord): string {
     )
   }
 
-  // Attention to Owner — Deduct from Deposit or Pay by Owner services with bank details
+  // Attention to Owner — Deduct from Deposit or Pay by Owner, grouped by provider
   const ownerServices = services.filter(
     (s) =>
       (s.payment_by === 'Deduct from Deposit' || s.payment_by === 'Pay by Owner') &&
@@ -167,12 +215,23 @@ export function generateMoveOutReport(record: PropertyRecord): string {
       `📌 *Attention to Owner*`,
       `Kindly make payment to the following service providers:`,
     )
-    ownerServices.forEach((s, i) => {
+    groupByProvider(ownerServices).forEach((g) => {
       lines.push(``)
-      lines.push(`${i + 1}. ${s.description}`)
-      if (s.notes) lines.push(`- ${s.notes}`)
-      lines.push(`Amount: ${formatCurrency(s.amount)}`)
-      lines.push(`👉 ${s.provider!.name} | ${s.provider!.bank_name} | ${s.provider!.bank_account}`)
+      if (g.services.length === 1) {
+        const s = g.services[0]
+        lines.push(`* ${s.description}`)
+        if (s.notes) lines.push(`- ${s.notes}`)
+        lines.push(`Amount: ${formatCurrency(s.amount)}`)
+        lines.push(`👉 ${g.providerName} | ${g.bankName} | ${g.bankAccount}`)
+      } else {
+        lines.push(`* ${g.providerName}`)
+        g.services.forEach((s) => {
+          lines.push(`  - ${s.description}: ${formatCurrency(s.amount)}`)
+          if (s.notes) lines.push(`    ${s.notes}`)
+        })
+        lines.push(`Total amount: ${formatCurrency(g.total)}`)
+        lines.push(`👉 ${g.providerName} | ${g.bankName} | ${g.bankAccount}`)
+      }
     })
   }
 
@@ -195,8 +254,8 @@ export function generateMaintenanceReport(record: PropertyRecord): string {
 
   if (services.length > 0) {
     lines.push(``, `🛠️ *Services*`)
-    services.forEach((s) => {
-      lines.push(``, ...serviceBlock(s))
+    groupByProvider(services).forEach((g) => {
+      lines.push(``, ...providerBlock(g))
     })
     lines.push(``, `*Total: ${formatCurrency(total)}*`)
   }
