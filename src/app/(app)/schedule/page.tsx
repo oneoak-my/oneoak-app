@@ -65,15 +65,15 @@ function buildCalendarUrl(record: CheckinRecord, overrides?: Partial<CheckinReco
 function buildTenantWaUrl(record: CheckinRecord): string {
   const moveInDate = record.move_in_date ?? record.date
   const msg = [
-    `Hi ${record.tenant_name ?? ''},`,
+    `Hi ${record.tenant_name ?? ''}! 👋`,
     '',
-    'This is a confirmation of your move-in appointment with the details below:',
+    'Just a quick reminder for your move-in appointment:',
     '',
-    `*Unit Number:* ${record.unit?.unit_number ?? ''}`,
-    `*Date:* ${formatDateLong(moveInDate)}`,
-    `*Time:* ${formatTimeWa(record.appointment_time)}`,
+    `📍 *Unit:* ${record.unit?.unit_number ?? ''}`,
+    `📅 *Date:* ${formatDateLong(moveInDate)}`,
+    `⏰ *Time:* ${formatTimeWa(record.appointment_time)}`,
     '',
-    'We look forward to welcoming you.',
+    'I will wait for you at the lobby. See you then! 😊',
   ].join('\n')
   return `https://wa.me/?text=${encodeURIComponent(msg)}`
 }
@@ -81,15 +81,15 @@ function buildTenantWaUrl(record: CheckinRecord): string {
 function buildCoAgentWaUrl(record: CheckinRecord): string {
   const moveInDate = record.move_in_date ?? record.date
   const msg = [
-    `Hi ${record.co_agent ?? ''},`,
+    `Hi ${record.co_agent ?? ''}!`,
     '',
-    'Kindly confirming the move-in appointment with the details below:',
+    'Just a quick reminder for the move-in appointment with your tenant:',
     '',
-    `*Unit Number:* ${record.unit?.unit_number ?? ''}`,
-    `*Date:* ${formatDateLong(moveInDate)}`,
-    `*Time:* ${formatTimeWa(record.appointment_time)}`,
+    `📍 *Unit:* ${record.unit?.unit_number ?? ''}`,
+    `📅 *Date:* ${formatDateLong(moveInDate)}`,
+    `⏰ *Time:* ${formatTimeWa(record.appointment_time)}`,
     '',
-    'Please let me know if everything is in order on your end. Thank you!',
+    "All good on your end? Let me know if there's any changes, thanks!",
   ].join('\n')
   return `https://wa.me/?text=${encodeURIComponent(msg)}`
 }
