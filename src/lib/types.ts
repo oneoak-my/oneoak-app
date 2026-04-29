@@ -113,6 +113,7 @@ export interface PropertyRecord {
   tenant_bank_holder: string | null
   record_status: string | null
   appointment_time: string | null
+  co_agent: string | null
   created_by: string | null
   updated_by: string | null
   created_at: string

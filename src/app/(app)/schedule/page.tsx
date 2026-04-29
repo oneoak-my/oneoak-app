@@ -1,18 +1,18 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import Link from 'next/link'
-import { CalendarDays, ArrowRight } from 'lucide-react'
+import { CalendarDays, ArrowRight, MessageCircle } from 'lucide-react'
 import { getUpcomingCheckins, updateRecord } from '@/lib/api'
 import type { PropertyRecord, Unit, Task } from '@/lib/types'
-import { RECORD_STATUS_COLORS, LISTER_OPTIONS } from '@/lib/types'
+import { LISTER_OPTIONS } from '@/lib/types'
 import { formatDate } from '@/lib/utils'
 
 type CheckinRecord = PropertyRecord & { unit: Unit; tasks: Task[] }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function formatTime(timeStr: string | null | undefined): string {
+function formatTimeDisplay(timeStr: string | null | undefined): string {
   if (!timeStr) return '—'
   const [h, m] = timeStr.split(':').map(Number)
   const ampm = h >= 12 ? 'PM' : 'AM'
@@ -20,32 +20,83 @@ function formatTime(timeStr: string | null | undefined): string {
   return `${hour12}:${String(m).padStart(2, '0')} ${ampm}`
 }
 
+function formatTimeWa(timeStr: string | null | undefined): string {
+  if (!timeStr) return 'TBC'
+  const [h, m] = timeStr.split(':').map(Number)
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  const hour12 = h % 12 || 12
+  return `${hour12}:${String(m).padStart(2, '0')} ${ampm}`
+}
+
+function formatDateLong(dateStr: string): string {
+  const [y, mo, d] = dateStr.split('-').map(Number)
+  return new Date(y, mo - 1, d).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
 function daysUntilDate(dateStr: string): number {
   const today = new Date(); today.setHours(0, 0, 0, 0)
-  const target = new Date(dateStr); target.setHours(0, 0, 0, 0)
+  const [y, mo, d] = dateStr.split('-').map(Number)
+  const target = new Date(y, mo - 1, d)
   return Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
 }
 
-function buildCalendarUrl(record: CheckinRecord): string {
-  const rawDate = record.move_in_date ?? record.date
+function buildCalendarUrl(record: CheckinRecord, overrides?: Partial<CheckinRecord>): string {
+  const r = { ...record, ...overrides }
+  const rawDate = r.move_in_date ?? r.date
   const dateStr = rawDate.replace(/-/g, '')
-  const timeStr = record.appointment_time ?? '10:00:00'
+  const timeStr = r.appointment_time ?? '10:00:00'
   const [h, m] = timeStr.split(':').map(Number)
   const startHH = String(h).padStart(2, '0')
   const startMM = String(m).padStart(2, '0')
   const endHH = String((h + 1) % 24).padStart(2, '0')
   const start = `${dateStr}T${startHH}${startMM}00`
   const end   = `${dateStr}T${endHH}${startMM}00`
-  const unit  = record.unit
-  const title   = encodeURIComponent(`Check-in: ${unit?.unit_number ?? ''} - ${record.tenant_name ?? ''}`)
-  const details = encodeURIComponent(`Unit: ${unit?.unit_number ?? ''} | Tenant: ${record.tenant_name ?? ''} | Lister: ${unit?.lister ?? '—'}`)
+  const unit  = r.unit
+  const title    = encodeURIComponent(`Check-in: ${unit?.unit_number ?? ''} - ${r.tenant_name ?? ''}`)
+  const details  = encodeURIComponent(`Unit: ${unit?.unit_number ?? ''} | Tenant: ${r.tenant_name ?? ''} | Lister: ${unit?.lister ?? '—'}`)
   const location = encodeURIComponent(unit?.building ?? '')
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${details}&location=${location}`
 }
 
+function buildTenantWaUrl(record: CheckinRecord): string {
+  const moveInDate = record.move_in_date ?? record.date
+  const msg = [
+    `Hi ${record.tenant_name ?? ''},`,
+    '',
+    'This is a confirmation of your move-in appointment with the details below:',
+    '',
+    `*Unit Number:* ${record.unit?.unit_number ?? ''}`,
+    `*Date:* ${formatDateLong(moveInDate)}`,
+    `*Time:* ${formatTimeWa(record.appointment_time)}`,
+    '',
+    'We look forward to welcoming you.',
+  ].join('\n')
+  return `https://wa.me/?text=${encodeURIComponent(msg)}`
+}
+
+function buildCoAgentWaUrl(record: CheckinRecord): string {
+  const moveInDate = record.move_in_date ?? record.date
+  const msg = [
+    `Hi ${record.co_agent ?? ''},`,
+    '',
+    'Kindly confirming the move-in appointment with the details below:',
+    '',
+    `*Unit Number:* ${record.unit?.unit_number ?? ''}`,
+    `*Date:* ${formatDateLong(moveInDate)}`,
+    `*Time:* ${formatTimeWa(record.appointment_time)}`,
+    '',
+    'Please let me know if everything is in order on your end. Thank you!',
+  ].join('\n')
+  return `https://wa.me/?text=${encodeURIComponent(msg)}`
+}
+
 function yyyyMM(dateStr: string): string {
-  const d = new Date(dateStr)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  const [y, mo] = dateStr.split('-')
+  return `${y}-${mo}`
 }
 
 function monthLabel(ym: string): string {
@@ -53,7 +104,32 @@ function monthLabel(ym: string): string {
   return new Date(y, mo - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
 }
 
-// ── Select style shared ───────────────────────────────────────────────────────
+// ── Toast ─────────────────────────────────────────────────────────────────────
+
+function CalendarToast({ url, onDismiss }: { url: string; onDismiss: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onDismiss, 8000)
+    return () => clearTimeout(t)
+  }, [onDismiss])
+
+  return (
+    <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-[#1e1a14] border border-[#332c20] rounded-xl px-4 py-3 shadow-xl text-sm text-[#a89d84] whitespace-nowrap">
+      <span>📅 Update Google Calendar?</span>
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={onDismiss}
+        className="text-gold-400 hover:text-gold-300 font-medium transition-colors"
+      >
+        Open →
+      </a>
+      <button onClick={onDismiss} className="text-[#5c5040] hover:text-[#7c6f54] ml-1">✕</button>
+    </div>
+  )
+}
+
+// ── Select style ──────────────────────────────────────────────────────────────
 
 const selectCls =
   'rounded-lg bg-[#1e1a14] border border-[#332c20] text-xs text-[#a89d84] px-3 py-2 focus:outline-none focus:border-gold-500/60 appearance-none pr-7 cursor-pointer'
@@ -61,11 +137,12 @@ const selectCls =
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function SchedulePage() {
-  const [records, setRecords] = useState<CheckinRecord[]>([])
-  const [loading, setLoading]   = useState(true)
-  const [monthFilter,  setMonthFilter]  = useState('all')
+  const [records, setRecords]         = useState<CheckinRecord[]>([])
+  const [loading, setLoading]         = useState(true)
+  const [monthFilter, setMonthFilter] = useState('all')
   const [listerFilter, setListerFilter] = useState('all')
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
+  const [sortOrder, setSortOrder]     = useState<'asc' | 'desc'>('asc')
+  const [toast, setToast]             = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -102,13 +179,16 @@ export default function SchedulePage() {
     return result
   }, [records, monthFilter, listerFilter, sortOrder])
 
+  const showToast = useCallback((url: string) => {
+    setToast(url)
+  }, [])
+
   return (
     <div className="py-5 space-y-4">
       <h1 className="text-lg font-bold text-[#f5f0e8] px-4">Check-in Schedule</h1>
 
       {/* Filters */}
       <div className="px-4 flex flex-wrap gap-2 items-center">
-        {/* Month */}
         <div className="relative">
           <select value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)} className={selectCls}>
             <option value="all">All Months</option>
@@ -119,7 +199,6 @@ export default function SchedulePage() {
           <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[#5c5040] text-xs">▾</span>
         </div>
 
-        {/* Lister */}
         <div className="relative">
           <select value={listerFilter} onChange={(e) => setListerFilter(e.target.value)} className={selectCls}>
             <option value="all">All Listers</option>
@@ -130,7 +209,6 @@ export default function SchedulePage() {
           <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[#5c5040] text-xs">▾</span>
         </div>
 
-        {/* Sort */}
         <div className="relative">
           <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value as 'asc' | 'desc')} className={selectCls}>
             <option value="asc">Soonest first</option>
@@ -155,42 +233,65 @@ export default function SchedulePage() {
         </div>
       ) : (
         <div className="overflow-x-auto border-t border-[#1e1a14]">
-          <table className="w-full border-collapse text-sm" style={{ minWidth: '720px' }}>
+          <table className="w-full border-collapse text-sm" style={{ minWidth: '860px' }}>
             <thead>
               <tr className="border-b border-[#332c20] bg-[#0e0c08]">
-                <th className="sticky left-0 z-10 bg-[#0e0c08] px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '130px' }}>
+                <th className="sticky left-0 z-[2] bg-[#0e0c08] px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '130px' }}>
                   Move-in Date
                 </th>
-                <th className="px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '90px' }}>Unit</th>
+                <th className="sticky bg-[#0e0c08] px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider whitespace-nowrap border-r border-[#332c20]" style={{ left: '130px', zIndex: 1, minWidth: '90px' }}>
+                  Unit
+                </th>
                 <th className="px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider" style={{ minWidth: '120px' }}>Tenant</th>
                 <th className="px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '110px' }}>Appt Time</th>
-                <th className="px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '130px' }}>Status</th>
                 <th className="px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '70px' }}>Tasks</th>
                 <th className="px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '80px' }}>Lister</th>
+                <th className="px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '110px' }}>CoA</th>
+                <th className="px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '60px' }}>Remind</th>
                 <th className="px-4 py-3 text-left text-[10px] font-semibold text-[#5c5040] uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '80px' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {visible.map((record) => (
-                <ScheduleRow key={record.id} record={record} onSaved={load} />
+                <ScheduleRow key={record.id} record={record} onSaved={load} onToast={showToast} />
               ))}
             </tbody>
           </table>
         </div>
       )}
+
+      {toast && <CalendarToast url={toast} onDismiss={() => setToast(null)} />}
     </div>
   )
 }
 
 // ── Row ───────────────────────────────────────────────────────────────────────
 
-function ScheduleRow({ record, onSaved }: { record: CheckinRecord; onSaved: () => void }) {
+function ScheduleRow({
+  record,
+  onSaved,
+  onToast,
+}: {
+  record: CheckinRecord
+  onSaved: () => void
+  onToast: (url: string) => void
+}) {
+  const [editingDate, setEditingDate] = useState(false)
+  const [dateValue, setDateValue]     = useState(record.move_in_date ?? record.date)
   const [editingTime, setEditingTime] = useState(false)
   const [timeValue, setTimeValue]     = useState(record.appointment_time?.slice(0, 5) ?? '')
+  const [editingCoA, setEditingCoA]   = useState(false)
+  const [coaMode, setCoaMode]         = useState<'select' | 'manual'>('select')
+  const [coaValue, setCoaValue]       = useState(record.co_agent ?? '')
+  const [showWa, setShowWa]           = useState(false)
   const [saving, setSaving]           = useState(false)
+  const waRef = useRef<HTMLDivElement>(null)
 
   const moveInDate = record.move_in_date ?? record.date
   const days       = daysUntilDate(moveInDate)
+  const isPast     = days < 0
+  const isToday    = days === 0
+  const isTomorrow = days === 1
   const isUrgent   = days >= 0 && days <= 7
 
   const tasks          = record.tasks ?? []
@@ -198,38 +299,70 @@ function ScheduleRow({ record, onSaved }: { record: CheckinRecord; onSaved: () =
   const allDone        = tasks.length > 0 && completedCount === tasks.length
   const noneDone       = completedCount === 0
 
-  const dotColor = allDone ? 'bg-emerald-500'
-    : !noneDone ? 'bg-orange-500'
-    : isUrgent  ? 'bg-red-500'
+  const dotColor = allDone    ? 'bg-emerald-500'
+    : !noneDone              ? 'bg-orange-500'
+    : isUrgent               ? 'bg-red-500'
     : 'bg-[#3d3628]'
 
-  const recStatus  = record.record_status ?? 'Open'
-  const statusColor = RECORD_STATUS_COLORS[recStatus] ?? RECORD_STATUS_COLORS['Open']
-
-  // Date cell display
-  let dateNode: React.ReactNode
-  if (days === 0) {
-    dateNode = <span className="text-red-400 font-semibold">Today</span>
-  } else if (days === 1) {
-    dateNode = <span className="text-orange-400 font-semibold">Tomorrow</span>
+  let dateCls   = 'text-[#f5f0e8]'
+  let dateLabel = formatDate(moveInDate)
+  if (isPast) {
+    dateCls   = 'text-red-500 line-through'
+  } else if (isToday) {
+    dateCls   = 'text-red-400 font-semibold'
+    dateLabel = 'Today'
+  } else if (isTomorrow) {
+    dateCls   = 'text-orange-400 font-semibold'
+    dateLabel = 'Tomorrow'
   } else if (isUrgent) {
-    dateNode = (
-      <span className="text-red-400">
-        {formatDate(moveInDate)}{' '}
-        <span className="text-[9px] bg-red-500/20 border border-red-500/30 px-1 py-0.5 rounded font-bold tracking-wide">
-          URGENT
-        </span>
-      </span>
-    )
-  } else {
-    dateNode = <span className="text-[#f5f0e8]">{formatDate(moveInDate)}</span>
+    dateCls   = 'text-red-400'
+  }
+
+  // Close WA popup on outside click
+  useEffect(() => {
+    if (!showWa) return
+    function handler(e: MouseEvent) {
+      if (waRef.current && !waRef.current.contains(e.target as Node)) setShowWa(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showWa])
+
+  async function saveDate() {
+    setSaving(true)
+    try {
+      await updateRecord(record.id, { move_in_date: dateValue })
+      setEditingDate(false)
+      onSaved()
+      onToast(buildCalendarUrl(record, { move_in_date: dateValue }))
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function saveTime() {
     setSaving(true)
     try {
-      await updateRecord(record.id, { appointment_time: timeValue || null })
+      const appt = timeValue || null
+      await updateRecord(record.id, { appointment_time: appt })
       setEditingTime(false)
+      onSaved()
+      onToast(buildCalendarUrl(record, { appointment_time: appt }))
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function saveCoA() {
+    setSaving(true)
+    try {
+      await updateRecord(record.id, { co_agent: coaValue || null })
+      setEditingCoA(false)
+      setCoaMode('select')
       onSaved()
     } catch (e) {
       console.error(e)
@@ -238,20 +371,46 @@ function ScheduleRow({ record, onSaved }: { record: CheckinRecord; onSaved: () =
     }
   }
 
-  const rowBg = isUrgent ? 'bg-red-500/[0.03]' : ''
+  function cancelCoA() {
+    setEditingCoA(false)
+    setCoaMode('select')
+    setCoaValue(record.co_agent ?? '')
+  }
+
+  const stickyBg = isUrgent ? 'rgb(10,5,3)' : '#0e0c08'
+  const rowBg    = isUrgent ? 'bg-red-500/[0.03]' : ''
 
   return (
     <tr className={`border-b border-[#1e1a14] hover:bg-[#1e1a14] transition-colors ${rowBg}`}>
-      {/* Move-in Date — sticky */}
-      <td
-        className="sticky left-0 px-4 py-3 whitespace-nowrap text-xs"
-        style={{ background: isUrgent ? 'rgb(10,5,3)' : '#0e0c08', zIndex: 1 }}
-      >
-        {dateNode}
+      {/* Move-in Date — sticky col 1 */}
+      <td className="sticky left-0 z-[2] px-4 py-3 whitespace-nowrap text-xs" style={{ background: stickyBg }}>
+        {editingDate ? (
+          <div className="flex items-center gap-1.5">
+            <input
+              type="date"
+              value={dateValue}
+              onChange={(e) => setDateValue(e.target.value)}
+              className="rounded bg-[#262018] border border-[#332c20] text-xs text-[#f5f0e8] px-1.5 py-1 focus:outline-none focus:border-gold-500/60 w-32"
+            />
+            <button onClick={saveDate} disabled={saving} className="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium">
+              {saving ? '…' : '✓'}
+            </button>
+            <button onClick={() => { setEditingDate(false); setDateValue(record.move_in_date ?? record.date) }} className="text-[11px] text-[#5c5040] hover:text-[#7c6f54]">
+              ✕
+            </button>
+          </div>
+        ) : (
+          <button onClick={() => setEditingDate(true)} className={`hover:opacity-70 transition-opacity ${dateCls}`}>
+            {dateLabel}
+          </button>
+        )}
       </td>
 
-      {/* Unit */}
-      <td className="px-4 py-3 whitespace-nowrap text-xs font-semibold text-[#f5f0e8]">
+      {/* Unit — sticky col 2 */}
+      <td
+        className="sticky px-4 py-3 whitespace-nowrap text-xs font-semibold text-[#f5f0e8] border-r border-[#332c20]"
+        style={{ left: '130px', zIndex: 1, background: stickyBg }}
+      >
         {record.unit?.unit_number}
       </td>
 
@@ -270,35 +429,18 @@ function ScheduleRow({ record, onSaved }: { record: CheckinRecord; onSaved: () =
               onChange={(e) => setTimeValue(e.target.value)}
               className="rounded bg-[#262018] border border-[#332c20] text-xs text-[#f5f0e8] px-1.5 py-1 focus:outline-none focus:border-gold-500/60 w-28"
             />
-            <button
-              onClick={saveTime}
-              disabled={saving}
-              className="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium"
-            >
+            <button onClick={saveTime} disabled={saving} className="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium">
               {saving ? '…' : '✓'}
             </button>
-            <button
-              onClick={() => { setEditingTime(false); setTimeValue(record.appointment_time?.slice(0, 5) ?? '') }}
-              className="text-[11px] text-[#5c5040] hover:text-[#7c6f54]"
-            >
+            <button onClick={() => { setEditingTime(false); setTimeValue(record.appointment_time?.slice(0, 5) ?? '') }} className="text-[11px] text-[#5c5040] hover:text-[#7c6f54]">
               ✕
             </button>
           </div>
         ) : (
-          <button
-            onClick={() => setEditingTime(true)}
-            className="text-[#a89d84] hover:text-gold-400 underline underline-offset-2 transition-colors"
-          >
-            {formatTime(record.appointment_time)}
+          <button onClick={() => setEditingTime(true)} className="text-[#a89d84] hover:text-gold-400 underline underline-offset-2 transition-colors">
+            {formatTimeDisplay(record.appointment_time)}
           </button>
         )}
-      </td>
-
-      {/* Status */}
-      <td className="px-4 py-3 whitespace-nowrap">
-        <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${statusColor}`}>
-          {recStatus}
-        </span>
       </td>
 
       {/* Tasks */}
@@ -314,6 +456,97 @@ function ScheduleRow({ record, onSaved }: { record: CheckinRecord; onSaved: () =
       {/* Lister */}
       <td className="px-4 py-3 whitespace-nowrap text-xs text-[#5c5040]">
         {record.unit?.lister ?? '—'}
+      </td>
+
+      {/* CoA */}
+      <td className="px-4 py-3 whitespace-nowrap text-xs">
+        {editingCoA ? (
+          <div className="flex items-center gap-1.5">
+            {coaMode === 'select' ? (
+              <select
+                defaultValue=""
+                onChange={(e) => {
+                  if (e.target.value === '__manual__') {
+                    setCoaMode('manual')
+                    setCoaValue('')
+                  } else {
+                    setCoaValue('')
+                  }
+                }}
+                className="rounded bg-[#262018] border border-[#332c20] text-xs text-[#f5f0e8] px-1.5 py-1 focus:outline-none focus:border-gold-500/60"
+              >
+                <option value="">N/A</option>
+                <option value="__manual__">Type manually...</option>
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={coaValue}
+                onChange={(e) => setCoaValue(e.target.value)}
+                placeholder="Co-agent name"
+                autoFocus
+                className="rounded bg-[#262018] border border-[#332c20] text-xs text-[#f5f0e8] px-1.5 py-1 focus:outline-none focus:border-gold-500/60 w-28"
+              />
+            )}
+            <button onClick={saveCoA} disabled={saving} className="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium">
+              {saving ? '…' : '✓'}
+            </button>
+            <button onClick={cancelCoA} className="text-[11px] text-[#5c5040] hover:text-[#7c6f54]">✕</button>
+          </div>
+        ) : (
+          <button
+            onClick={() => {
+              setCoaMode(record.co_agent ? 'manual' : 'select')
+              setCoaValue(record.co_agent ?? '')
+              setEditingCoA(true)
+            }}
+            className="text-[#5c5040] hover:text-[#a89d84] transition-colors"
+          >
+            {record.co_agent ?? 'N/A'}
+          </button>
+        )}
+      </td>
+
+      {/* WA Remind */}
+      <td className="px-4 py-3 whitespace-nowrap">
+        <div className="relative" ref={waRef}>
+          <button
+            onClick={() => setShowWa((v) => !v)}
+            title="Send reminder"
+            className="p-1.5 rounded-lg hover:bg-[#262018] text-[#5c5040] hover:text-emerald-400 transition-colors"
+          >
+            <MessageCircle size={14} />
+          </button>
+          {showWa && (
+            <div className="absolute bottom-full left-0 mb-1 z-20 bg-[#1e1a14] border border-[#332c20] rounded-xl shadow-xl py-1 min-w-[160px]">
+              {record.tenant_name ? (
+                <a
+                  href={buildTenantWaUrl(record)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setShowWa(false)}
+                  className="block px-4 py-2 text-xs text-[#a89d84] hover:bg-[#262018] hover:text-[#f5f0e8] transition-colors rounded-t-xl"
+                >
+                  Message Tenant
+                </a>
+              ) : null}
+              {record.co_agent ? (
+                <a
+                  href={buildCoAgentWaUrl(record)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setShowWa(false)}
+                  className="block px-4 py-2 text-xs text-[#a89d84] hover:bg-[#262018] hover:text-[#f5f0e8] transition-colors rounded-b-xl"
+                >
+                  Message Co-Agent
+                </a>
+              ) : null}
+              {!record.tenant_name && !record.co_agent && (
+                <div className="px-4 py-2 text-xs text-[#5c5040]">No recipients set</div>
+              )}
+            </div>
+          )}
+        </div>
       </td>
 
       {/* Actions */}
