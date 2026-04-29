@@ -9,7 +9,7 @@ import {
 import {
   getRecord, updateRecord, deleteRecord,
   createService, updateService, deleteService,
-  getServiceProviders, getServiceDescriptions, uploadInvoice,
+  getServiceProviders, getServiceDescriptions, uploadInvoice, createServiceProvider,
   markReportGenerated, extractError,
 } from '@/lib/api'
 import type { PropertyRecord, Service, ServiceProvider, ServiceDescription, RecordType, PaymentBy } from '@/lib/types'
@@ -132,7 +132,7 @@ export default function RecordDetailPage() {
     .reduce((s, sv) => s + (sv.amount ?? 0), 0)
   const refund = record.type === 'checkout' ? calcRefund(record) : null
   const typeBadge = statusBadge(record.type)
-  const hasInvoices = services.some((s) => s.invoice_url)
+  const hasInvoices = services.some((s) => s.invoice_url || s.invoice_url_2 || s.invoice_url_3)
 
   return (
     <div className="px-4 py-5 space-y-5">
@@ -489,16 +489,20 @@ function ServiceCard({
               </p>
             </div>
           )}
-          {service.invoice_url && (
-            <a
-              href={service.invoice_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-xs text-gold-400 hover:text-gold-300"
-            >
-              <Upload size={12} /> View Invoice
-            </a>
-          )}
+          {[service.invoice_url, service.invoice_url_2, service.invoice_url_3]
+            .filter(Boolean)
+            .map((url, i, arr) => (
+              <a
+                key={i}
+                href={url!}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-xs text-gold-400 hover:text-gold-300"
+              >
+                <Upload size={12} /> View Invoice{arr.length > 1 ? ` ${i + 1}` : ''}
+              </a>
+            ))
+          }
           {service.notes && (
             <p className="text-xs text-[#7c6f54]">{service.notes}</p>
           )}
@@ -517,6 +521,13 @@ function ServiceCard({
 }
 
 // ── Service Modal ─────────────────────────────────────────────────────────────
+
+type InvoiceItem = { kind: 'existing'; url: string } | { kind: 'new'; file: File }
+
+function invoiceDisplayName(item: InvoiceItem): string {
+  if (item.kind === 'new') return item.file.name
+  return item.url.split('/').pop()?.split('?')[0] ?? 'invoice'
+}
 
 function ServiceModal({
   open,
@@ -540,18 +551,71 @@ function ServiceModal({
   const paymentByOptions = recordType === 'checkout' ? PAYMENT_BY_CHECKOUT : PAYMENT_BY_OTHER
   const defaultPaymentBy: PaymentBy = recordType === 'checkout' ? 'Deduct from Deposit' : 'Pay by Owner'
 
-  const [description, setDescription] = useState(editService?.description ?? '')
+  const [description, setDescription] = useState('')
   const [customDescription, setCustomDescription] = useState('')
-  const [providerId, setProviderId] = useState(editService?.provider_id ?? '')
-  const [amount, setAmount] = useState(editService ? String(editService.amount) : '')
-  const [paymentBy, setPaymentBy] = useState<PaymentBy>(editService?.payment_by ?? defaultPaymentBy)
-  const [notes, setNotes] = useState(editService?.notes ?? '')
-  const [invoiceFile, setInvoiceFile] = useState<File | null>(null)
+  const [providerId, setProviderId] = useState('')
+  const [manualMode, setManualMode] = useState(false)
+  const [manualName, setManualName] = useState('')
+  const [manualBankName, setManualBankName] = useState('')
+  const [manualBankAccount, setManualBankAccount] = useState('')
+  const [amount, setAmount] = useState('')
+  const [paymentBy, setPaymentBy] = useState<PaymentBy>(defaultPaymentBy)
+  const [notes, setNotes] = useState('')
+  const [invoices, setInvoices] = useState<InvoiceItem[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  // Reset or pre-fill whenever modal opens
+  useEffect(() => {
+    if (!open) return
+    setError('')
+    if (editService) {
+      setDescription(editService.description)
+      setCustomDescription('')
+      setProviderId(editService.provider_id ?? '')
+      setManualMode(false)
+      setManualName('')
+      setManualBankName('')
+      setManualBankAccount('')
+      setAmount(String(editService.amount))
+      setPaymentBy(editService.payment_by)
+      setNotes(editService.notes ?? '')
+      const existing: InvoiceItem[] = []
+      if (editService.invoice_url) existing.push({ kind: 'existing', url: editService.invoice_url })
+      if (editService.invoice_url_2) existing.push({ kind: 'existing', url: editService.invoice_url_2 })
+      if (editService.invoice_url_3) existing.push({ kind: 'existing', url: editService.invoice_url_3 })
+      setInvoices(existing)
+    } else {
+      setDescription('')
+      setCustomDescription('')
+      setProviderId('')
+      setManualMode(false)
+      setManualName('')
+      setManualBankName('')
+      setManualBankAccount('')
+      setAmount('')
+      setPaymentBy(defaultPaymentBy)
+      setNotes('')
+      setInvoices([])
+    }
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const selectedProvider = providers.find((p) => p.id === providerId)
   const isOthers = description === 'Others'
+
+  function handleProviderChange(value: string) {
+    if (value === '__manual__') {
+      setManualMode(true)
+      setProviderId('')
+    } else {
+      setProviderId(value)
+    }
+  }
+
+  function addInvoiceFile(file: File) {
+    if (invoices.length >= 3) return
+    setInvoices((prev) => [...prev, { kind: 'new', file }])
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -562,16 +626,27 @@ function ServiceModal({
     setLoading(true)
     setError('')
     try {
-      let invoiceUrl = editService?.invoice_url ?? null
+      // Resolve provider
+      let resolvedProviderId: string | null = providerId || null
+      if (manualMode && manualName.trim()) {
+        const created = await createServiceProvider({
+          name: manualName.trim(),
+          bank_name: manualBankName.trim() || undefined,
+          bank_account: manualBankAccount.trim() || undefined,
+        })
+        resolvedProviderId = created.id
+      }
 
       const serviceData = {
         record_id: recordId,
         description: finalDescription,
-        provider_id: providerId || null,
+        provider_id: resolvedProviderId,
         amount: parseFloat(amount),
         payment_by: paymentBy,
         notes: notes.trim() || null,
-        invoice_url: invoiceUrl,
+        invoice_url: null as string | null,
+        invoice_url_2: null as string | null,
+        invoice_url_3: null as string | null,
       }
 
       let savedServiceId = editService?.id
@@ -583,9 +658,22 @@ function ServiceModal({
         savedServiceId = created.id
       }
 
-      if (invoiceFile && savedServiceId) {
-        invoiceUrl = await uploadInvoice(invoiceFile, savedServiceId)
-        await updateService(savedServiceId, { invoice_url: invoiceUrl })
+      // Upload any new invoices; keep existing URLs in their slots
+      if (savedServiceId) {
+        const urls: (string | null)[] = [null, null, null]
+        for (let i = 0; i < Math.min(invoices.length, 3); i++) {
+          const item = invoices[i]
+          if (item.kind === 'existing') {
+            urls[i] = item.url
+          } else {
+            urls[i] = await uploadInvoice(item.file, savedServiceId, (i + 1) as 1 | 2 | 3)
+          }
+        }
+        await updateService(savedServiceId, {
+          invoice_url: urls[0],
+          invoice_url_2: urls[1],
+          invoice_url_3: urls[2],
+        })
       }
 
       onSaved()
@@ -614,14 +702,52 @@ function ServiceModal({
             placeholder="Describe the service…"
           />
         )}
-        <Select
-          label="Service Provider"
-          value={providerId}
-          onChange={(e) => setProviderId(e.target.value)}
-          placeholder="Select provider (optional)…"
-          options={providers.map((p) => ({ value: p.id, label: p.name }))}
-        />
-        {selectedProvider && (
+
+        {/* Provider — dropdown or manual input */}
+        {!manualMode ? (
+          <Select
+            label="Service Provider"
+            value={providerId}
+            onChange={(e) => handleProviderChange(e.target.value)}
+            placeholder="Select provider (optional)…"
+            options={[
+              ...providers.map((p) => ({ value: p.id, label: p.name })),
+              { value: '__manual__', label: 'Type manually...' },
+            ]}
+          />
+        ) : (
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setManualMode(false)}
+              className="text-xs text-[#7c6f54] hover:text-[#a89d84] transition-colors"
+            >
+              ← Back to list
+            </button>
+            <Input
+              label="Provider Name"
+              value={manualName}
+              onChange={(e) => setManualName(e.target.value)}
+              placeholder="e.g. Sia Geok Ling"
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                label="Bank Name"
+                value={manualBankName}
+                onChange={(e) => setManualBankName(e.target.value)}
+                placeholder="e.g. Maybank"
+              />
+              <Input
+                label="Account No."
+                value={manualBankAccount}
+                onChange={(e) => setManualBankAccount(e.target.value)}
+                placeholder="e.g. 1234 5678"
+              />
+            </div>
+          </div>
+        )}
+
+        {!manualMode && selectedProvider && (
           <div className="rounded-xl bg-[#262018] border border-[#332c20] px-3 py-2.5">
             <p className="text-[10px] text-[#5c5040] uppercase tracking-wide mb-1">Bank Details</p>
             <p className="text-xs text-[#a89d84]">
@@ -629,6 +755,7 @@ function ServiceModal({
             </p>
           </div>
         )}
+
         <Input
           label="Amount (RM)"
           type="number"
@@ -650,22 +777,48 @@ function ServiceModal({
           onChange={(e) => setNotes(e.target.value)}
           placeholder="Any notes…"
         />
-        {/* Invoice upload */}
+
+        {/* Invoice upload — up to 3 */}
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium text-[#a89d84]">Invoice (optional)</label>
-          <label className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-dashed border-[#332c20] bg-[#262018] cursor-pointer hover:border-gold-500/40 transition-colors">
-            <Upload size={14} className="text-[#7c6f54]" />
-            <span className="text-xs text-[#7c6f54]">
-              {invoiceFile ? invoiceFile.name : editService?.invoice_url ? 'Replace invoice…' : 'Upload invoice…'}
-            </span>
-            <input
-              type="file"
-              accept="image/*,application/pdf"
-              className="sr-only"
-              onChange={(e) => setInvoiceFile(e.target.files?.[0] ?? null)}
-            />
+          <label className="text-xs font-medium text-[#a89d84]">
+            Invoices (optional)
           </label>
+          {invoices.map((item, i) => (
+            <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#262018] border border-[#332c20]">
+              <Upload size={12} className="text-[#7c6f54] shrink-0" />
+              <span className="text-xs text-[#a89d84] flex-1 truncate">{invoiceDisplayName(item)}</span>
+              <button
+                type="button"
+                onClick={() => setInvoices((prev) => prev.filter((_, j) => j !== i))}
+                className="shrink-0 text-red-400 hover:text-red-300 transition-colors p-0.5"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ))}
+          {invoices.length < 3 && (
+            <label className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-dashed border-[#332c20] bg-[#262018] cursor-pointer hover:border-gold-500/40 transition-colors">
+              <Upload size={14} className="text-[#7c6f54]" />
+              <span className="text-xs text-[#7c6f54]">
+                {invoices.length === 0 ? 'Upload invoice…' : `Upload invoice (${invoices.length}/3 uploaded)`}
+              </span>
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                className="sr-only"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) addInvoiceFile(f)
+                  e.target.value = ''
+                }}
+              />
+            </label>
+          )}
+          {invoices.length === 3 && (
+            <p className="text-[10px] text-[#5c5040]">Maximum 3 invoices reached.</p>
+          )}
         </div>
+
         {error && <p className="text-sm text-red-400">{error}</p>}
         <div className="flex gap-3 pt-2">
           <Button variant="secondary" type="button" fullWidth onClick={onClose}>Cancel</Button>

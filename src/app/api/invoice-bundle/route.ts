@@ -74,6 +74,8 @@ export async function GET(request: Request) {
       description: string
       amount: number
       invoice_url: string | null
+      invoice_url_2: string | null
+      invoice_url_3: string | null
       notes: string | null
       provider: { name: string; bank_name: string; bank_account: string } | null
     }>
@@ -184,65 +186,67 @@ export async function GET(request: Request) {
 
     // ── Invoice pages ─────────────────────────────────────────────────────────
 
-    for (const service of services.filter((s) => s.invoice_url)) {
-      const url = service.invoice_url!
-      const mime = mimeFromUrl(url)
-      const bytes = await fetchBytes(url)
+    for (const service of services) {
+      const invoiceUrls = [service.invoice_url, service.invoice_url_2, service.invoice_url_3].filter(Boolean) as string[]
+      for (const url of invoiceUrls) {
+        const mime = mimeFromUrl(url)
+        const bytes = await fetchBytes(url)
 
-      if (!bytes) {
-        const p = pdfDoc.addPage([PW, PH])
-        p.drawText(`Could not fetch invoice: ${trunc(service.description, 60)}`, {
-          x: M, y: PH / 2, size: 12, font: regular, color: errorRed,
-        })
-        continue
-      }
-
-      if (mime === 'application/pdf') {
-        try {
-          const src = await PDFDocument.load(bytes)
-          const indices = src.getPageIndices()
-          const copied = await pdfDoc.copyPages(src, indices)
-          copied.forEach((p) => pdfDoc.addPage(p))
-        } catch {
+        if (!bytes) {
           const p = pdfDoc.addPage([PW, PH])
-          p.drawText(`Could not parse PDF: ${trunc(service.description, 60)}`, {
+          p.drawText(`Could not fetch invoice: ${trunc(service.description, 60)}`, {
             x: M, y: PH / 2, size: 12, font: regular, color: errorRed,
           })
+          continue
         }
-      } else {
-        try {
-          const img = mime === 'image/png'
-            ? await pdfDoc.embedPng(bytes)
-            : await pdfDoc.embedJpg(bytes)
 
-          const p = pdfDoc.addPage([PW, PH])
-          const labelY = PH - M
-          p.drawText(trunc(service.description, 62), {
-            x: M, y: labelY, size: 11, font: bold, color: ink,
-          })
-          if (service.provider) {
-            p.drawText(`${service.provider.name}  ·  ${fmt(service.amount)}`, {
-              x: M, y: labelY - 14, size: 9, font: regular, color: muted,
+        if (mime === 'application/pdf') {
+          try {
+            const src = await PDFDocument.load(bytes)
+            const indices = src.getPageIndices()
+            const copied = await pdfDoc.copyPages(src, indices)
+            copied.forEach((p) => pdfDoc.addPage(p))
+          } catch {
+            const p = pdfDoc.addPage([PW, PH])
+            p.drawText(`Could not parse PDF: ${trunc(service.description, 60)}`, {
+              x: M, y: PH / 2, size: 12, font: regular, color: errorRed,
             })
           }
-          p.drawLine({
-            start: { x: M, y: labelY - 22 },
-            end: { x: PW - M, y: labelY - 22 },
-            thickness: 0.3, color: gold,
-          })
+        } else {
+          try {
+            const img = mime === 'image/png'
+              ? await pdfDoc.embedPng(bytes)
+              : await pdfDoc.embedJpg(bytes)
 
-          const imgAreaTop = labelY - 30
-          const imgAreaH   = imgAreaTop - M
-          const scaled     = img.scaleToFit(CW, imgAreaH)
-          const imgX       = M + (CW - scaled.width) / 2
-          const imgY       = imgAreaTop - scaled.height
+            const p = pdfDoc.addPage([PW, PH])
+            const labelY = PH - M
+            p.drawText(trunc(service.description, 62), {
+              x: M, y: labelY, size: 11, font: bold, color: ink,
+            })
+            if (service.provider) {
+              p.drawText(`${service.provider.name}  ·  ${fmt(service.amount)}`, {
+                x: M, y: labelY - 14, size: 9, font: regular, color: muted,
+              })
+            }
+            p.drawLine({
+              start: { x: M, y: labelY - 22 },
+              end: { x: PW - M, y: labelY - 22 },
+              thickness: 0.3, color: gold,
+            })
 
-          p.drawImage(img, { x: imgX, y: imgY, width: scaled.width, height: scaled.height })
-        } catch {
-          const p = pdfDoc.addPage([PW, PH])
-          p.drawText(`Could not embed image: ${trunc(service.description, 60)}`, {
-            x: M, y: PH / 2, size: 12, font: regular, color: errorRed,
-          })
+            const imgAreaTop = labelY - 30
+            const imgAreaH   = imgAreaTop - M
+            const scaled     = img.scaleToFit(CW, imgAreaH)
+            const imgX       = M + (CW - scaled.width) / 2
+            const imgY       = imgAreaTop - scaled.height
+
+            p.drawImage(img, { x: imgX, y: imgY, width: scaled.width, height: scaled.height })
+          } catch {
+            const p = pdfDoc.addPage([PW, PH])
+            p.drawText(`Could not embed image: ${trunc(service.description, 60)}`, {
+              x: M, y: PH / 2, size: 12, font: regular, color: errorRed,
+            })
+          }
         }
       }
     }

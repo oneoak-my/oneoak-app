@@ -138,6 +138,8 @@ export interface Service {
   amount: number
   payment_by: PaymentBy
   invoice_url: string | null
+  invoice_url_2: string | null
+  invoice_url_3: string | null
   payment_status: PaymentStatus
   payment_proof_url: string | null
   notes: string | null

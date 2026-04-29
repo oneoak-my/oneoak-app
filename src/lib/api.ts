@@ -332,13 +332,23 @@ export async function getServiceDescriptions(): Promise<ServiceDescription[]> {
 
 // ── File upload ────────────────────────────────────────
 
-export async function uploadInvoice(file: File, serviceId: string): Promise<string> {
-  const ext = file.name.split('.').pop()
-  const path = `invoices/${serviceId}.${ext}`
+export async function uploadInvoice(file: File, serviceId: string, slot: 1 | 2 | 3 = 1): Promise<string> {
+  const ext = file.name.split('.').pop() ?? 'jpg'
+  const path = `invoices/${serviceId}_${slot}.${ext}`
   const { error } = await supabase.storage
     .from('invoices')
     .upload(path, file, { upsert: true })
   if (error) throw error
   const { data } = supabase.storage.from('invoices').getPublicUrl(path)
   return data.publicUrl
+}
+
+export async function createServiceProvider(data: { name: string; bank_name?: string; bank_account?: string }): Promise<ServiceProvider> {
+  const { data: result, error } = await supabase
+    .from('service_providers')
+    .insert({ name: data.name, bank_name: data.bank_name ?? '', bank_account: data.bank_account ?? '' })
+    .select()
+    .single()
+  if (error) throw error
+  return result
 }
