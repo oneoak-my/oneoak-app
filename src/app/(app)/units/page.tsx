@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Plus, Search, Building2, ChevronRight } from 'lucide-react'
 import { getUnits, createUnit, extractError } from '@/lib/api'
 import type { Unit, UnitStatusTag } from '@/lib/types'
-import { BUILDINGS, ALL_UNIT_TAGS, UNIT_TAG_STYLES } from '@/lib/types'
+import { BUILDINGS, LISTER_OPTIONS, ALL_UNIT_TAGS, UNIT_TAG_STYLES } from '@/lib/types'
 import { UnitTagBadges } from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
@@ -193,6 +193,9 @@ function UnitCard({ unit, onClick }: { unit: Unit; onClick: () => void }) {
           {!activeRecord && tags.length === 0 && (
             <p className="text-xs text-[#5c5040] mt-1">No active tenant</p>
           )}
+          {unit.lister && (
+            <p className="text-xs text-[#4a4030] mt-0.5">Lister: {unit.lister}</p>
+          )}
         </div>
         <div className="flex items-center gap-2 shrink-0 ml-3">
           {(unit.records ?? []).length > 0 && (
@@ -216,6 +219,7 @@ function AddUnitModal({
 }) {
   const [building, setBuilding] = useState<string>('')
   const [unitNumber, setUnitNumber] = useState('')
+  const [lister, setLister] = useState('')
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -225,8 +229,8 @@ function AddUnitModal({
     if (!building || !unitNumber.trim()) { setError('Building and unit number are required.'); return }
     setLoading(true); setError('')
     try {
-      await createUnit({ building, unit_number: unitNumber.trim(), notes: notes.trim() || null, status: [] })
-      setBuilding(''); setUnitNumber(''); setNotes('')
+      await createUnit({ building, unit_number: unitNumber.trim(), lister: lister || null, notes: notes.trim() || null, status: [] })
+      setBuilding(''); setUnitNumber(''); setLister(''); setNotes('')
       onAdded()
     } catch (err: unknown) {
       setError(extractError(err))
@@ -245,6 +249,12 @@ function AddUnitModal({
         <Input
           label="Unit Number" value={unitNumber} onChange={(e) => setUnitNumber(e.target.value)}
           placeholder="e.g. A-12-03"
+        />
+        <Select
+          label="Lister (agent who brought in this property)"
+          value={lister} onChange={(e) => setLister(e.target.value)}
+          placeholder="Select lister…"
+          options={LISTER_OPTIONS.map((l) => ({ value: l, label: l }))}
         />
         <Input
           label="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)}

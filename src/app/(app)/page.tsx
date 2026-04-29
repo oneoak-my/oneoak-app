@@ -4,14 +4,14 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
-  Building2, Receipt, LogIn, LogOut, Wrench, Calendar, ChevronRight, Plus,
+  Building2, Receipt, LogIn, LogOut, Wrench, Calendar, CalendarDays, ChevronRight, Plus,
 } from 'lucide-react'
 import {
   getUnits, getOutstandingServices, createUnit, extractError, testConnection,
   getActiveRecordsWithTasks,
 } from '@/lib/api'
 import type { Unit, Service, PropertyRecord, RecordWithTasks } from '@/lib/types'
-import { BUILDINGS, RECORD_STATUS_COLORS, RECORD_TYPE_LABELS } from '@/lib/types'
+import { BUILDINGS, LISTER_OPTIONS, RECORD_STATUS_COLORS, RECORD_TYPE_LABELS } from '@/lib/types'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import Badge, { statusBadge } from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
@@ -146,6 +146,13 @@ export default function DashboardPage() {
           >
             <div className="p-2 rounded-lg bg-gold-500/10 text-gold-400"><Receipt size={16} /></div>
             <span className="text-sm font-medium text-[#f5f0e8]">View Bills</span>
+          </Link>
+          <Link
+            href="/schedule"
+            className="flex items-center gap-3 p-3.5 rounded-xl border border-[#332c20] bg-[#1e1a14] hover:border-gold-500/40 hover:bg-[#262018] transition-colors col-span-2"
+          >
+            <div className="p-2 rounded-lg bg-gold-500/10 text-gold-400"><CalendarDays size={16} /></div>
+            <span className="text-sm font-medium text-[#f5f0e8]">Upcoming Check-ins</span>
           </Link>
         </div>
       </div>
@@ -351,11 +358,12 @@ function AddUnitModal({
 }) {
   const [building, setBuilding] = useState('')
   const [unitNumber, setUnitNumber] = useState('')
+  const [lister, setLister] = useState('')
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  function reset() { setBuilding(''); setUnitNumber(''); setNotes(''); setError('') }
+  function reset() { setBuilding(''); setUnitNumber(''); setLister(''); setNotes(''); setError('') }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -364,7 +372,7 @@ function AddUnitModal({
     setLoading(true); setError('')
     try {
       const created = await createUnit({
-        building, unit_number: unitNumber.trim(), notes: notes.trim() || null, status: [],
+        building, unit_number: unitNumber.trim(), lister: lister || null, notes: notes.trim() || null, status: [],
       })
       reset(); onAdded(created.id)
     } catch (err: unknown) {
@@ -384,6 +392,12 @@ function AddUnitModal({
         <Input
           label="Unit Number" value={unitNumber} onChange={(e) => setUnitNumber(e.target.value)}
           placeholder="e.g. A-12-03" autoFocus
+        />
+        <Select
+          label="Lister (agent who brought in this property)"
+          value={lister} onChange={(e) => setLister(e.target.value)}
+          placeholder="Select lister…"
+          options={LISTER_OPTIONS.map((l) => ({ value: l, label: l }))}
         />
         <Input
           label="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)}

@@ -2,6 +2,11 @@ import { supabase } from './supabase'
 import type { Unit, PropertyRecord, Service, ServiceProvider, ServiceDescription, RecordType, UnitStatusTag, Task, RecordWithTasks } from './types'
 import { DEFAULT_TASK_TEMPLATES } from './taskTemplates'
 
+async function getCurrentUserEmail(): Promise<string> {
+  const { data: { user } } = await supabase.auth.getUser()
+  return user?.email ?? 'Unknown'
+}
+
 // Extracts a readable message from Supabase PostgrestError or standard Error
 export function extractError(err: unknown): string {
   if (!err) return 'Unknown error'
@@ -52,9 +57,10 @@ export async function getUnit(id: string): Promise<Unit | null> {
 }
 
 export async function createUnit(unit: Partial<Unit>): Promise<Unit> {
+  const userEmail = await getCurrentUserEmail()
   const { data, error } = await supabase
     .from('units')
-    .insert(unit)
+    .insert({ ...unit, created_by: userEmail, updated_by: userEmail })
     .select()
     .single()
   if (error) throw error
@@ -62,9 +68,10 @@ export async function createUnit(unit: Partial<Unit>): Promise<Unit> {
 }
 
 export async function updateUnit(id: string, updates: Partial<Unit>): Promise<Unit> {
+  const userEmail = await getCurrentUserEmail()
   const { data, error } = await supabase
     .from('units')
-    .update({ ...updates, updated_at: new Date().toISOString() })
+    .update({ ...updates, updated_by: userEmail, updated_at: new Date().toISOString() })
     .eq('id', id)
     .select()
     .single()
@@ -112,9 +119,10 @@ export async function getRecord(id: string): Promise<PropertyRecord | null> {
 }
 
 export async function createRecord(record: Partial<PropertyRecord>): Promise<PropertyRecord> {
+  const userEmail = await getCurrentUserEmail()
   const { data, error } = await supabase
     .from('records')
-    .insert(record)
+    .insert({ ...record, created_by: userEmail, updated_by: userEmail })
     .select()
     .single()
   if (error) throw error
@@ -255,9 +263,10 @@ export async function markReportGenerated(recordId: string, recordType: RecordTy
 }
 
 export async function updateRecord(id: string, updates: Partial<PropertyRecord>): Promise<PropertyRecord> {
+  const userEmail = await getCurrentUserEmail()
   const { data, error } = await supabase
     .from('records')
-    .update({ ...updates, updated_at: new Date().toISOString() })
+    .update({ ...updates, updated_by: userEmail, updated_at: new Date().toISOString() })
     .eq('id', id)
     .select()
     .single()
@@ -273,9 +282,10 @@ export async function deleteRecord(id: string): Promise<void> {
 // ── Services ───────────────────────────────────────────
 
 export async function createService(service: Partial<Service>): Promise<Service> {
+  const userEmail = await getCurrentUserEmail()
   const { data, error } = await supabase
     .from('services')
-    .insert(service)
+    .insert({ ...service, created_by: userEmail, updated_by: userEmail })
     .select('*, provider:service_providers(*)')
     .single()
   if (error) throw error
@@ -283,9 +293,10 @@ export async function createService(service: Partial<Service>): Promise<Service>
 }
 
 export async function updateService(id: string, updates: Partial<Service>): Promise<Service> {
+  const userEmail = await getCurrentUserEmail()
   const { data, error } = await supabase
     .from('services')
-    .update({ ...updates, updated_at: new Date().toISOString() })
+    .update({ ...updates, updated_by: userEmail, updated_at: new Date().toISOString() })
     .eq('id', id)
     .select('*, provider:service_providers(*)')
     .single()
@@ -341,6 +352,19 @@ export async function uploadInvoice(file: File, serviceId: string, slot: 1 | 2 |
   if (error) throw error
   const { data } = supabase.storage.from('invoices').getPublicUrl(path)
   return data.publicUrl
+}
+
+export async function getUpcomingCheckins(): Promise<(PropertyRecord & { unit: Unit; tasks: Task[] })[]> {
+  const today = new Date().toISOString().split('T')[0]
+  const { data, error } = await supabase
+    .from('records')
+    .select('*, unit:units(*), tasks(*)')
+    .eq('type', 'checkin')
+    .gte('move_in_date', today)
+    .neq('record_status', 'Active Tenancy')
+    .order('move_in_date', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as (PropertyRecord & { unit: Unit; tasks: Task[] })[]
 }
 
 export async function createServiceProvider(data: { name: string; bank_name?: string; bank_account?: string }): Promise<ServiceProvider> {

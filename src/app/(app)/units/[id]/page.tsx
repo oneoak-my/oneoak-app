@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import { getUnit, createRecord, updateUnit, deleteUnit, extractError } from '@/lib/api'
 import type { Unit, PropertyRecord, UnitStatusTag, BadgeVariant } from '@/lib/types'
-import { BUILDINGS, RECORD_TYPE_LABELS, UTILITY_OPTIONS, ALL_UNIT_TAGS, UNIT_TAG_STYLES } from '@/lib/types'
+import { BUILDINGS, LISTER_OPTIONS, RECORD_TYPE_LABELS, UTILITY_OPTIONS, ALL_UNIT_TAGS, UNIT_TAG_STYLES } from '@/lib/types'
 import { formatDate, formatCurrency } from '@/lib/utils'
 import { UnitTagBadges } from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
@@ -175,7 +175,14 @@ export default function UnitDetailPage() {
       {/* Unit header */}
       <div>
         <h1 className="text-2xl font-bold text-[#f5f0e8] mb-1">{unit.unit_number}</h1>
-        <p className="text-sm text-[#7c6f54] mb-2">{unit.building}</p>
+        <p className="text-sm text-[#7c6f54] mb-1">{unit.building}</p>
+        {unit.lister && (
+          <p className="text-xs text-[#5c5040] mb-1">Lister: {unit.lister}</p>
+        )}
+        <p style={{ fontSize: '11px' }} className="text-[#4a4030] mb-2">
+          {unit.created_by && `Added by ${unit.created_by}`}
+          {unit.created_by && unit.updated_by && unit.updated_by !== unit.created_by && ` · Last updated by ${unit.updated_by}`}
+        </p>
 
         {/* Active tags */}
         {activeTags.length > 0 && (
@@ -576,6 +583,7 @@ function EditUnitModal({
 }) {
   const [building, setBuilding] = useState(unit.building)
   const [unitNumber, setUnitNumber] = useState(unit.unit_number)
+  const [lister, setLister] = useState(unit.lister ?? '')
   const [notes, setNotes] = useState(unit.notes ?? '')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -589,6 +597,7 @@ function EditUnitModal({
       await updateUnit(unit.id, {
         building,
         unit_number: unitNumber.trim(),
+        lister: lister || null,
         notes: notes.trim() || null,
       })
       onSaved()
@@ -612,6 +621,13 @@ function EditUnitModal({
           label="Unit Number"
           value={unitNumber}
           onChange={(e) => setUnitNumber(e.target.value)}
+        />
+        <Select
+          label="Lister (agent who brought in this property)"
+          value={lister}
+          onChange={(e) => setLister(e.target.value)}
+          placeholder="Select lister…"
+          options={LISTER_OPTIONS.map((l) => ({ value: l, label: l }))}
         />
         <Input
           label="Notes (optional)"

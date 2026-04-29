@@ -192,6 +192,13 @@ export default function RecordDetailPage() {
         <p className="text-sm text-[#7c6f54] mt-0.5">
           {record.unit?.unit_number} · {record.unit?.building} · {formatDate(record.date)}
         </p>
+        {(record.created_by || record.updated_by) && (
+          <p style={{ fontSize: '11px' }} className="text-[#4a4030] mt-1">
+            {record.created_by && `Created by ${record.created_by}`}
+            {record.updated_by && record.updated_by !== record.created_by && ` · Last updated by ${record.updated_by}`}
+            {record.updated_at && ` on ${new Date(record.updated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`}
+          </p>
+        )}
       </div>
 
       {/* Financials card */}
@@ -819,6 +826,9 @@ function ServiceModal({
           )}
         </div>
 
+        {editService?.created_by && (
+          <p className="text-[11px] text-[#4a4030]">Added by {editService.created_by}</p>
+        )}
         {error && <p className="text-sm text-red-400">{error}</p>}
         <div className="flex gap-3 pt-2">
           <Button variant="secondary" type="button" fullWidth onClick={onClose}>Cancel</Button>

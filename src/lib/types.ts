@@ -72,12 +72,18 @@ export const UNIT_TAG_STYLES: Record<UnitStatusTag, { variant: BadgeVariant; lab
 
 // ── Data models ───────────────────────────────────────────────────────────────
 
+export const LISTER_OPTIONS = ['Tony Ong', 'Vivian', 'Others'] as const
+export type Lister = typeof LISTER_OPTIONS[number]
+
 export interface Unit {
   id: string
   building: string
   unit_number: string
   notes: string | null
   status: UnitStatusTag[]
+  lister: string | null
+  created_by: string | null
+  updated_by: string | null
   created_at: string
   updated_at: string
   records?: PropertyRecord[]
@@ -106,6 +112,9 @@ export interface PropertyRecord {
   tenant_bank_account: string | null
   tenant_bank_holder: string | null
   record_status: string | null
+  appointment_time: string | null
+  created_by: string | null
+  updated_by: string | null
   created_at: string
   updated_at: string
   unit?: Unit
@@ -143,6 +152,8 @@ export interface Service {
   payment_status: PaymentStatus
   payment_proof_url: string | null
   notes: string | null
+  created_by: string | null
+  updated_by: string | null
   created_at: string
   updated_at: string
   provider?: ServiceProvider
