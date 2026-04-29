@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
-  Building2, Receipt, LogIn, LogOut, Wrench, Calendar, CalendarDays, ChevronRight, Plus,
+  Building2, Receipt, LogIn, LogOut, Wrench, CalendarDays, ChevronRight, Plus,
 } from 'lucide-react'
 import {
   getUnits, getOutstandingServices, createUnit, extractError, testConnection,
@@ -60,6 +60,13 @@ export default function DashboardPage() {
 
   const pendingMaintenance = allRecords.filter(
     (r) => r.type === 'maintenance' && r.status === 'active'
+  ).length
+
+  const today = new Date().toISOString().split('T')[0]
+  const upcomingCheckinCount = allRecords.filter(
+    (r) => r.type === 'checkin' &&
+      (r.move_in_date ?? r.date) >= today &&
+      r.record_status !== 'Active Tenancy',
   ).length
 
   const outstandingTotal = outstanding.reduce((s, sv) => s + (sv.amount ?? 0), 0)
@@ -121,11 +128,11 @@ export default function DashboardPage() {
           href="/records?type=maintenance&status=pending"
         />
         <StatCard
-          label="Active Records"
-          value={loading ? '—' : taskRecords.length}
-          icon={<Calendar size={18} />}
-          sub="with open tasks"
-          href="/records"
+          label="Upcoming Check-ins"
+          value={loading ? '—' : upcomingCheckinCount}
+          icon={<CalendarDays size={18} />}
+          sub="future move-ins"
+          href="/schedule"
         />
       </div>
 
