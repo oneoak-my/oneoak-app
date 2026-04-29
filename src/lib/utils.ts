@@ -110,8 +110,30 @@ export function generateMoveInReport(record: PropertyRecord): string {
 
   if (services.length > 0) {
     lines.push(``, `🔧 *Services*`)
-    groupByProvider(services).forEach((g) => {
-      lines.push(``, ...providerBlock(g))
+    groupByProvider(services).forEach((g, i) => {
+      const num = i + 1
+      const hasBankDetails = !!(g.bankName && g.bankAccount)
+      lines.push(``)
+      if (g.services.length === 1) {
+        const s = g.services[0]
+        if (s.notes) {
+          lines.push(`${num}. *${s.description}*`)
+          lines.push(`- ${s.notes}: ${formatCurrency(s.amount)}`)
+        } else {
+          lines.push(`${num}. *${s.description}*: ${formatCurrency(s.amount)}`)
+        }
+      } else {
+        lines.push(`${num}. *Services:*`)
+        g.services.forEach((s) => {
+          lines.push(`- ${s.description}: ${formatCurrency(s.amount)}`)
+          if (s.notes) lines.push(`  - ${s.notes}`)
+        })
+        lines.push(`Total: ${formatCurrency(g.total)}`)
+      }
+      if (hasBankDetails) {
+        lines.push(`👉 Pay to:`)
+        lines.push(`*Bank Details:* ${g.providerName} | ${g.bankName} | ${g.bankAccount}`)
+      }
     })
     lines.push(``, `*Total Services: ${formatCurrency(services.reduce((sum, s) => sum + s.amount, 0))}*`)
   }
