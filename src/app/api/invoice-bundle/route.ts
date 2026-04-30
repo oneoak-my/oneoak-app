@@ -81,9 +81,12 @@ export async function GET(request: Request) {
       provider: { name: string; bank_name: string; bank_account: string } | null
     }>
 
-    // Only include Deduct from Deposit and Tenant Pay Direct in the invoice bundle
+    // Include Deduct from Deposit, Deduct from Deposit + Pay by One Oak, and Tenant Pay Direct
     const services = allServices.filter(
-      (s) => s.payment_by === 'Deduct from Deposit' || s.payment_by === 'Tenant Pay Direct',
+      (s) =>
+        s.payment_by === 'Deduct from Deposit' ||
+        s.payment_by === 'Deduct from Deposit + Pay by One Oak' ||
+        s.payment_by === 'Tenant Pay Direct',
     )
     const unit = record.unit as { unit_number: string; building: string } | null
 
