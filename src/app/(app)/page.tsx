@@ -154,13 +154,6 @@ export default function DashboardPage() {
             <div className="p-2 rounded-lg bg-gold-500/10 text-gold-400"><Receipt size={16} /></div>
             <span className="text-sm font-medium text-[#f5f0e8]">View Bills</span>
           </Link>
-          <Link
-            href="/schedule"
-            className="flex items-center gap-3 p-3.5 rounded-xl border border-[#332c20] bg-[#1e1a14] hover:border-gold-500/40 hover:bg-[#262018] transition-colors col-span-2"
-          >
-            <div className="p-2 rounded-lg bg-gold-500/10 text-gold-400"><CalendarDays size={16} /></div>
-            <span className="text-sm font-medium text-[#f5f0e8]">Upcoming Check-ins</span>
-          </Link>
         </div>
       </div>
 

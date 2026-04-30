@@ -114,6 +114,9 @@ export interface PropertyRecord {
   record_status: string | null
   appointment_time: string | null
   co_agent: string | null
+  cleaning_status: string | null
+  steam_cleaning_status: string | null
+  aircond_status: string | null
   created_by: string | null
   updated_by: string | null
   created_at: string

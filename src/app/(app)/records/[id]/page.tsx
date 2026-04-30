@@ -318,6 +318,9 @@ export default function RecordDetailPage() {
       {/* Notes */}
       <NotesSection record={record} />
 
+      {/* Services Status (checkout only) */}
+      {record.type === 'checkout' && <ServicesStatusSection record={record} onSaved={load} />}
+
       {/* Tasks */}
       <TaskSection record={record} />
 
@@ -997,6 +1000,72 @@ function EditRecordModal({
         </div>
       </form>
     </Modal>
+  )
+}
+
+// ── Services Status Section ───────────────────────────────────────────────────
+
+const SERVICE_STATUS_OPTIONS = [
+  'TBC',
+  'Completed & Paid by Tenant',
+  'To be scheduled, Deduct from Deposit',
+  'Scheduled by Tenant, Deduct from Deposit',
+] as const
+
+const statusSelectCls =
+  'w-full rounded-lg bg-[#262018] border border-[#332c20] text-xs text-[#a89d84] px-3 py-2.5 focus:outline-none focus:border-gold-500/60 appearance-none cursor-pointer'
+
+function ServicesStatusSection({ record, onSaved }: { record: PropertyRecord; onSaved: () => void }) {
+  const [cleaning, setCleaning] = useState(record.cleaning_status ?? 'TBC')
+  const [steam, setSteam]       = useState(record.steam_cleaning_status ?? 'TBC')
+  const [aircond, setAircond]   = useState(record.aircond_status ?? 'TBC')
+  const [saved, setSaved]       = useState(false)
+
+  async function save(field: string, value: string) {
+    try {
+      await updateRecord(record.id, { [field]: value } as Partial<PropertyRecord>)
+      setSaved(true)
+      onSaved()
+      setTimeout(() => setSaved(false), 2000)
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-semibold text-[#7c6f54] uppercase tracking-wider">Services Status</p>
+        <span className={`text-xs text-emerald-400 transition-opacity duration-300 ${saved ? 'opacity-100' : 'opacity-0'}`}>
+          Saved ✓
+        </span>
+      </div>
+      <Card>
+        <div className="space-y-4">
+          {[
+            { label: 'Cleaning Service',     value: cleaning, setter: setCleaning, field: 'cleaning_status' },
+            { label: 'Steam Cleaning',        value: steam,    setter: setSteam,    field: 'steam_cleaning_status' },
+            { label: 'Air Cond Service',      value: aircond,  setter: setAircond,  field: 'aircond_status' },
+          ].map(({ label, value, setter, field }) => (
+            <div key={field}>
+              <p className="text-xs text-[#7c6f54] mb-1.5">{label}</p>
+              <div className="relative">
+                <select
+                  value={value}
+                  onChange={(e) => { setter(e.target.value); save(field, e.target.value) }}
+                  className={statusSelectCls}
+                >
+                  {SERVICE_STATUS_OPTIONS.map((o) => (
+                    <option key={o} value={o}>{o}</option>
+                  ))}
+                </select>
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#5c5040] text-xs">▾</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
   )
 }
 

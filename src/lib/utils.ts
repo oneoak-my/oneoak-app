@@ -55,6 +55,12 @@ function sortByPriority(services: Service[]): Service[] {
   return [...services].sort((a, b) => servicePriority(a) - servicePriority(b))
 }
 
+function serviceStatusDisplay(status: string | null | undefined): string {
+  if (!status || status === 'TBC') return 'TBC'
+  if (status === 'Completed & Paid by Tenant') return 'Completed & Paid by Tenant'
+  return 'Deduct from Deposit'
+}
+
 // ── WhatsApp Reports ──────────────────────────────────────────────────────────
 
 type ProviderGroup = {
@@ -195,6 +201,11 @@ export function generateMoveOutReport(record: PropertyRecord): string {
     `- Water: ${record.water_status ?? '—'}`,
     `- Indah Water: ${record.indah_water_status ?? '—'}`,
     `- Gas: ${record.gas_status ?? '—'}`,
+    ``,
+    `🔧 *Services Status*`,
+    `- Cleaning Service: ${serviceStatusDisplay(record.cleaning_status)}`,
+    `- Steam Cleaning: ${serviceStatusDisplay(record.steam_cleaning_status)}`,
+    `- Air Cond Service: ${serviceStatusDisplay(record.aircond_status)}`,
     ``,
     `💰 *Deposit Summary*`,
     `- Security Deposit: ${formatCurrency(record.security_deposit)}`,
