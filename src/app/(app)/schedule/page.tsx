@@ -423,10 +423,15 @@ function ScheduleRow({
 
       {/* Unit — sticky col 2 */}
       <td
-        className="sticky bg-[#0e0c08] px-2 sm:px-4 py-2 sm:py-3 whitespace-nowrap font-semibold text-[#f5f0e8] border-r border-[#332c20] truncate max-w-[90px]"
+        className="sticky bg-[#0e0c08] px-2 sm:px-4 py-2 sm:py-3 whitespace-nowrap font-semibold border-r border-[#332c20]"
         style={{ left: '85px', zIndex: 1 }}
       >
-        {record.unit?.unit_number}
+        <Link
+          href={`/units/${record.unit_id}`}
+          className="text-[#f5f0e8] hover:text-gold-400 hover:underline transition-colors"
+        >
+          {(record.unit?.unit_number ?? '').slice(0, 12)}
+        </Link>
       </td>
 
       {/* Tenant */}
