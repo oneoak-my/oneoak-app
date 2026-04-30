@@ -723,7 +723,7 @@ function ServiceModal({
             ]}
           />
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
             <button
               type="button"
               onClick={() => setManualMode(false)}
@@ -737,20 +737,18 @@ function ServiceModal({
               onChange={(e) => setManualName(e.target.value)}
               placeholder="e.g. Sia Geok Ling"
             />
-            <div className="grid grid-cols-2 gap-2">
-              <Input
-                label="Bank Name"
-                value={manualBankName}
-                onChange={(e) => setManualBankName(e.target.value)}
-                placeholder="e.g. Maybank"
-              />
-              <Input
-                label="Account No."
-                value={manualBankAccount}
-                onChange={(e) => setManualBankAccount(e.target.value)}
-                placeholder="e.g. 1234 5678"
-              />
-            </div>
+            <Input
+              label="Bank Name"
+              value={manualBankName}
+              onChange={(e) => setManualBankName(e.target.value)}
+              placeholder="e.g. Maybank"
+            />
+            <Input
+              label="Account Number"
+              value={manualBankAccount}
+              onChange={(e) => setManualBankAccount(e.target.value)}
+              placeholder="e.g. 1234 5678"
+            />
           </div>
         )}
 

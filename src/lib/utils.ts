@@ -246,12 +246,10 @@ export function generateMoveOutReport(record: PropertyRecord): string {
     )
   }
 
-  // Attention to Owner — Deduct from Deposit and Pay by Owner only (must have bank details)
+  // Attention to Owner — ALL Deduct from Deposit and Pay by Owner services
   const ownerServices = sortByPriority(
     allServices.filter(
-      (s) =>
-        (s.payment_by === 'Deduct from Deposit' || s.payment_by === 'Pay by Owner') &&
-        s.provider && s.provider.bank_name && s.provider.bank_account,
+      (s) => s.payment_by === 'Deduct from Deposit' || s.payment_by === 'Pay by Owner',
     ),
   )
 
@@ -265,13 +263,20 @@ export function generateMoveOutReport(record: PropertyRecord): string {
     )
     groupByProvider(ownerServices).forEach((g, i) => {
       const num = i + 1
+      const hasBankDetails = !!(g.bankName && g.bankAccount)
+      const hasProviderName = g.providerName !== 'Others'
+      const bankLine = hasBankDetails
+        ? `👉 ${g.providerName} | ${g.bankName} | ${g.bankAccount}`
+        : hasProviderName
+          ? `👉 ${g.providerName} (no bank details provided)`
+          : `👉 (provider not specified)`
       lines.push(``)
       if (g.services.length === 1) {
         const s = g.services[0]
         lines.push(`${num}. * ${s.description}`)
         if (s.notes) lines.push(`- ${s.notes}`)
         lines.push(`Amount: ${formatCurrency(s.amount)}`)
-        lines.push(`👉 ${g.providerName} | ${g.bankName} | ${g.bankAccount}`)
+        lines.push(bankLine)
       } else {
         lines.push(`${num}. * ${g.providerName}`)
         g.services.forEach((s) => {
@@ -279,7 +284,7 @@ export function generateMoveOutReport(record: PropertyRecord): string {
           if (s.notes) lines.push(`    ${s.notes}`)
         })
         lines.push(`Total amount: ${formatCurrency(g.total)}`)
-        lines.push(`👉 ${g.providerName} | ${g.bankName} | ${g.bankAccount}`)
+        lines.push(bankLine)
       }
     })
   }
