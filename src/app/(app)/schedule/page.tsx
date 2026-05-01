@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import Link from 'next/link'
-import { CalendarDays, ArrowRight, MessageCircle } from 'lucide-react'
+import { CalendarDays, ArrowRight, MessageCircle, RefreshCw } from 'lucide-react'
 import { getUpcomingCheckins, updateRecord } from '@/lib/api'
 import type { PropertyRecord, Unit, Task } from '@/lib/types'
 import { LISTER_OPTIONS } from '@/lib/types'
@@ -199,11 +199,23 @@ export default function SchedulePage() {
 
   return (
     <div className="py-5 space-y-4">
+      {/* Section nav */}
+      <div className="px-4 grid grid-cols-2 gap-3">
+        <div className="flex items-center gap-2.5 p-3.5 rounded-xl border-2 border-gold-500/50 bg-gold-500/10">
+          <CalendarDays size={17} className="text-gold-400" />
+          <span className="text-sm font-bold text-[#f5f0e8]">Check-in Schedule</span>
+        </div>
+        <Link
+          href="/renewal"
+          className="flex items-center gap-2.5 p-3.5 rounded-xl border border-[#332c20] bg-[#1e1a14] hover:border-gold-500/40 hover:bg-[#262018] transition-colors"
+        >
+          <RefreshCw size={17} className="text-[#7c6f54]" />
+          <span className="text-sm font-bold text-[#f5f0e8]">Tenancy Expiry</span>
+        </Link>
+      </div>
+
       <div className="px-4 flex items-center justify-between">
         <h1 className="text-lg font-bold text-[#f5f0e8]">Check-in Schedule</h1>
-        <Link href="/renewal" className="flex items-center gap-1 text-xs text-gold-400 hover:text-gold-300 transition-colors">
-          Renewals <ArrowRight size={12} />
-        </Link>
       </div>
 
       {/* Filters */}

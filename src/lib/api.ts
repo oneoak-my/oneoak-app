@@ -198,6 +198,7 @@ async function swapUnitTag(unitId: string, remove: UnitStatusTag, add: UnitStatu
 // ── Default task creation ────────────────────────────────
 
 export async function createDefaultTasks(recordId: string, recordType: RecordType): Promise<void> {
+  if (recordType === 'renewal') return
   const templates = DEFAULT_TASK_TEMPLATES[recordType]
   if (!templates?.length) return
 
@@ -385,12 +386,24 @@ export async function getRenewalRecords(): Promise<(PropertyRecord & { unit: Uni
     .select('*, unit:units(*)')
     .eq('type', 'checkin')
     .eq('status', 'active')
+    .order('date', { ascending: false })
   if (error) throw error
-  return ((data ?? []) as (PropertyRecord & { unit: Unit })[]).filter(
-    (r) =>
-      r.record_status === 'Active Tenancy' ||
-      ((r.unit?.status ?? []) as string[]).includes('Tenanted'),
-  )
+
+  const all = (data ?? []) as (PropertyRecord & { unit: Unit })[]
+
+  const RELEVANT_TAGS = ['Tenanted', 'Check-in WIP', 'Ready for Check-In']
+  const filtered = all.filter((r) => {
+    const hasTag = ((r.unit?.status ?? []) as string[]).some((t) => RELEVANT_TAGS.includes(t))
+    return hasTag || r.record_status === 'Active Tenancy'
+  })
+
+  // Keep only the latest checkin per unit (data already ordered date desc)
+  const seen = new Set<string>()
+  return filtered.filter((r) => {
+    if (seen.has(r.unit_id)) return false
+    seen.add(r.unit_id)
+    return true
+  })
 }
 
 export async function createRenewal(data: Partial<import('./types').Renewal>): Promise<import('./types').Renewal> {

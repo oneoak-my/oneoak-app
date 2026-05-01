@@ -28,6 +28,7 @@ export const DEFAULT_TASK_TEMPLATES: Record<RecordType, TaskTemplate[]> = {
     { category: 'default', title: 'Report to Management',                         is_optional: false, sort_order: 1 },
     { category: 'default', title: 'Schedule Appointment with Contractor/Tenant',   is_optional: false, sort_order: 2 },
   ],
+  renewal: [],
 }
 
 export interface OptionalTaskList {
@@ -114,4 +115,5 @@ export const OPTIONAL_TASK_LISTS: Record<RecordType, OptionalTaskList[]> = {
       ],
     },
   ],
+  renewal: [],
 }

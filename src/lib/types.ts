@@ -19,7 +19,7 @@ export interface Task {
 
 // ── Record types ──────────────────────────────────────────────────────────────
 
-export type RecordType = 'checkin' | 'checkout' | 'maintenance'
+export type RecordType = 'checkin' | 'checkout' | 'maintenance' | 'renewal'
 export type RecordStatus = 'active' | 'completed'
 export type PaymentStatus = 'unpaid' | 'proof_sent' | 'paid'
 export type UtilityStatus = 'No Outstanding' | 'Have Outstanding'
@@ -28,6 +28,7 @@ export const RECORD_STATUS_OPTIONS: Record<RecordType, string[]> = {
   checkin:     ['Open', 'In Progress', 'Ready for Check In', 'Active Tenancy'],
   checkout:    ['Open', 'In Progress', 'Ready for Rent'],
   maintenance: ['Open', 'Scheduled', 'In Progress', 'Completed'],
+  renewal:     ['Open', 'Completed'],
 }
 
 export const RECORD_STATUS_COLORS: Record<string, string> = {
@@ -120,6 +121,19 @@ export interface PropertyRecord {
   cleaning_status: string | null
   steam_cleaning_status: string | null
   aircond_status: string | null
+  landlord_name: string | null
+  landlord_id: string | null
+  tenant_id: string | null
+  unit_full_address: string | null
+  original_ta_date: string | null
+  prev_security_deposit: number | null
+  prev_utility_deposit: number | null
+  new_security_deposit: number | null
+  new_utility_deposit: number | null
+  security_topup: number | null
+  utility_topup: number | null
+  renewal_start_date: string | null
+  renewal_end_date: string | null
   created_by: string | null
   updated_by: string | null
   created_at: string
@@ -186,6 +200,7 @@ export const RECORD_TYPE_LABELS: { [K in RecordType]: string } = {
   checkin: 'Check-in',
   checkout: 'Check-out',
   maintenance: 'Maintenance',
+  renewal: 'Renewal',
 }
 
 export const PAYMENT_STATUS_LABELS: { [K in PaymentStatus]: string } = {

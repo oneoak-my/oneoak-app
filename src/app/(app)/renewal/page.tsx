@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { MessageCircle, RefreshCw, LogOut, X, Upload, FileText, Check } from 'lucide-react'
+import Link from 'next/link'
+import { MessageCircle, RefreshCw, LogOut, X, Upload, FileText, Check, CalendarDays } from 'lucide-react'
 import { getRenewalRecords, updateRecord, createRecord, createRenewal } from '@/lib/api'
 import type { PropertyRecord, Unit } from '@/lib/types'
 import { LISTER_OPTIONS } from '@/lib/types'
@@ -96,13 +97,13 @@ function WaPopup({ record, onClose }: { record: RenewRec; onClose: () => void })
   return (
     <div
       ref={ref}
-      className="absolute right-0 top-8 z-50 bg-[#1a1610] border border-[#332c20] rounded-xl shadow-xl p-2 min-w-[180px]"
+      className="absolute right-0 top-8 z-50 bg-[#1e1a14] border border-[#332c20] rounded-xl shadow-xl p-2 min-w-[180px]"
     >
       <a
         href={tenantRenewalWa(record)}
         target="_blank"
         rel="noopener noreferrer"
-        className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#26200f] text-sm text-[#f5f0e8] transition-colors"
+        className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#262018] text-sm text-[#f5f0e8] transition-colors"
         onClick={onClose}
       >
         <MessageCircle size={14} className="text-green-400" />
@@ -113,7 +114,7 @@ function WaPopup({ record, onClose }: { record: RenewRec; onClose: () => void })
           href={coAgentRenewalWa(record)}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#26200f] text-sm text-[#f5f0e8] transition-colors"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#262018] text-sm text-[#f5f0e8] transition-colors"
           onClick={onClose}
         >
           <MessageCircle size={14} className="text-blue-400" />
@@ -477,7 +478,7 @@ function RenewalModal({
             <button
               onClick={() => fileRef.current?.click()}
               disabled={reading}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#332c20] bg-[#1a1610] hover:bg-[#262018] text-sm text-[#a89d84] transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#332c20] bg-[#1e1a14] hover:bg-[#262018] text-sm text-[#a89d84] transition-colors disabled:opacity-50"
             >
               <Upload size={14} />
               {reading ? 'Reading…' : 'Upload TA'}
@@ -546,13 +547,13 @@ function RenewalModal({
         <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-[#332c20]">
           <button
             onClick={downloadPdf}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#332c20] bg-[#1a1610] hover:bg-[#262018] text-sm text-[#a89d84] transition-colors"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#332c20] bg-[#1e1a14] hover:bg-[#262018] text-sm text-[#a89d84] transition-colors"
           >
             <FileText size={14} /> PDF
           </button>
           <button
             onClick={downloadWord}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#332c20] bg-[#1a1610] hover:bg-[#262018] text-sm text-[#a89d84] transition-colors"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#332c20] bg-[#1e1a14] hover:bg-[#262018] text-sm text-[#a89d84] transition-colors"
           >
             <FileText size={14} /> Word
           </button>
@@ -572,7 +573,7 @@ const EXPIRY_FILTERS = ['All', '2 months', '3 months', '6 months'] as const
 type ExpiryFilter = typeof EXPIRY_FILTERS[number]
 
 const selectCls =
-  'bg-[#1a1610] border border-[#332c20] text-[#f5f0e8] text-xs rounded-lg px-2.5 py-1.5 appearance-none pr-6 focus:outline-none focus:border-gold-500/50 cursor-pointer'
+  'bg-[#1e1a14] border border-[#332c20] text-[#f5f0e8] text-xs rounded-lg px-2.5 py-1.5 appearance-none pr-6 focus:outline-none focus:border-gold-500/50 cursor-pointer'
 
 export default function RenewalPage() {
   const router = useRouter()
@@ -627,6 +628,21 @@ export default function RenewalPage() {
 
   return (
     <div className="py-5 space-y-4">
+      {/* Section nav */}
+      <div className="px-4 grid grid-cols-2 gap-3">
+        <Link
+          href="/schedule"
+          className="flex items-center gap-2.5 p-3.5 rounded-xl border border-[#332c20] bg-[#1e1a14] hover:border-gold-500/40 hover:bg-[#262018] transition-colors"
+        >
+          <CalendarDays size={17} className="text-[#7c6f54]" />
+          <span className="text-sm font-bold text-[#f5f0e8]">Check-in Schedule</span>
+        </Link>
+        <div className="flex items-center gap-2.5 p-3.5 rounded-xl border-2 border-gold-500/50 bg-gold-500/10">
+          <RefreshCw size={17} className="text-gold-400" />
+          <span className="text-sm font-bold text-[#f5f0e8]">Tenancy Expiry</span>
+        </div>
+      </div>
+
       {/* Header */}
       <div className="px-4 flex items-center justify-between">
         <h1 className="text-lg font-bold text-[#f5f0e8]">Tenancy Renewals</h1>
@@ -634,7 +650,7 @@ export default function RenewalPage() {
       </div>
 
       {/* Filters */}
-      <div className="px-4 flex flex-wrap gap-2 items-center">
+      <div className="px-4 bg-[#262018] py-2 rounded-xl flex flex-wrap gap-2 items-center">
         <div className="flex rounded-lg overflow-hidden border border-[#332c20]">
           {EXPIRY_FILTERS.map((f) => (
             <button
@@ -643,7 +659,7 @@ export default function RenewalPage() {
               className={`px-3 py-1.5 text-xs transition-colors ${
                 expiryFilter === f
                   ? 'bg-gold-500/20 text-gold-300'
-                  : 'bg-[#1a1610] text-[#7c6f54] hover:text-[#a89d84]'
+                  : 'bg-[#1e1a14] text-[#7c6f54] hover:text-[#a89d84]'
               }`}
             >
               {f}
@@ -688,7 +704,7 @@ export default function RenewalPage() {
                   (h) => (
                     <th
                       key={h}
-                      className="px-4 py-2.5 text-left text-[10px] font-semibold text-[#7c6f54] uppercase tracking-wider whitespace-nowrap"
+                      className="px-4 py-2.5 text-left text-[10px] font-semibold text-[#f5f0e8] uppercase tracking-wider whitespace-nowrap"
                     >
                       {h}
                     </th>
@@ -710,7 +726,7 @@ export default function RenewalPage() {
                 return (
                   <tr
                     key={r.id}
-                    className="border-b border-[#332c20]/40 hover:bg-[#1a1610] transition-colors"
+                    className="border-b border-[#332c20]/40 hover:bg-[#1e1a14] transition-colors"
                   >
                     {/* Remind By */}
                     <td className="px-4 py-3 whitespace-nowrap">
@@ -731,7 +747,7 @@ export default function RenewalPage() {
                             type="date"
                             value={expiryDraft}
                             onChange={(e) => setExpiryDraft(e.target.value)}
-                            className="bg-[#1a1610] border border-gold-500/50 text-[#f5f0e8] text-xs rounded px-2 py-1 w-32 focus:outline-none"
+                            className="bg-[#1e1a14] border border-gold-500/50 text-[#f5f0e8] text-xs rounded px-2 py-1 w-32 focus:outline-none"
                             autoFocus
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') saveExpiry(r, expiryDraft)
@@ -765,7 +781,7 @@ export default function RenewalPage() {
                                 ? 'text-red-400'
                                 : isUrgent
                                 ? 'text-orange-400'
-                                : 'text-[#a89d84]'
+                                : 'text-[#f5f0e8]'
                             }`}
                           >
                             {fmtDate(expiry)}
@@ -814,12 +830,12 @@ export default function RenewalPage() {
                     </td>
 
                     {/* Lister */}
-                    <td className="px-4 py-3 text-xs text-[#a89d84] whitespace-nowrap">
+                    <td className="px-4 py-3 text-xs text-[#f5f0e8] whitespace-nowrap">
                       {r.unit?.lister ?? '—'}
                     </td>
 
                     {/* CoA */}
-                    <td className="px-4 py-3 text-xs text-[#a89d84] whitespace-nowrap">
+                    <td className="px-4 py-3 text-xs text-[#f5f0e8] whitespace-nowrap">
                       {r.co_agent_checkin ?? '—'}
                     </td>
 
@@ -850,7 +866,7 @@ export default function RenewalPage() {
                         </button>
                         <button
                           onClick={() => setVacatingRecord(r)}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#1a1610] hover:bg-red-500/10 border border-[#332c20] hover:border-red-500/30 text-[#7c6f54] hover:text-red-400 text-xs font-medium transition-colors"
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#1e1a14] hover:bg-red-500/10 border border-[#332c20] hover:border-red-500/30 text-[#7c6f54] hover:text-red-400 text-xs font-medium transition-colors"
                         >
                           <LogOut size={11} /> Vacate
                         </button>

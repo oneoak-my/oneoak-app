@@ -4,10 +4,10 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import {
   ArrowLeft, Plus, ChevronRight, MoreHorizontal, Trash2, Edit2,
-  ClipboardList, LogIn, LogOut, Wrench,
+  ClipboardList, LogIn, LogOut, Wrench, RefreshCw,
 } from 'lucide-react'
 import { getUnit, createRecord, updateUnit, deleteUnit, extractError } from '@/lib/api'
-import type { Unit, PropertyRecord, UnitStatusTag, BadgeVariant } from '@/lib/types'
+import type { Unit, PropertyRecord, UnitStatusTag, BadgeVariant, RecordType } from '@/lib/types'
 import { BUILDINGS, LISTER_OPTIONS, RECORD_TYPE_LABELS, UTILITY_OPTIONS, ALL_UNIT_TAGS, UNIT_TAG_STYLES } from '@/lib/types'
 import { formatDate, formatCurrency } from '@/lib/utils'
 import { UnitTagBadges } from '@/components/ui/Badge'
@@ -32,6 +32,7 @@ const RECORD_TYPE_ICONS = {
   checkin: <LogIn size={16} />,
   checkout: <LogOut size={16} />,
   maintenance: <Wrench size={16} />,
+  renewal: <RefreshCw size={16} />,
 }
 
 export default function UnitDetailPage() {
@@ -288,6 +289,7 @@ function RecordCard({ record, onClick }: { record: PropertyRecord; onClick: () =
           <div className={`p-2 rounded-xl shrink-0 ${
             record.type === 'checkin' ? 'bg-blue-500/15 text-blue-400'
             : record.type === 'checkout' ? 'bg-red-500/15 text-red-400'
+            : record.type === 'renewal' ? 'bg-gold-500/15 text-gold-400'
             : 'bg-orange-500/15 text-orange-400'
           }`}>
             {RECORD_TYPE_ICONS[record.type]}
@@ -339,7 +341,7 @@ function AddRecordModal({
   onAdded: () => void
 }) {
   const today = new Date().toISOString().split('T')[0]
-  const [type, setType] = useState<'checkin' | 'checkout' | 'maintenance'>('checkin')
+  const [type, setType] = useState<RecordType>('checkin')
   const [tenantName, setTenantName] = useState('')
   const [date, setDate] = useState(today)
   const [monthlyRental, setMonthlyRental] = useState('')
@@ -358,10 +360,34 @@ function AddRecordModal({
   const [bankHolder, setBankHolder] = useState('')
   const [bankName, setBankName] = useState('')
   const [bankAccount, setBankAccount] = useState('')
+  // Renewal fields
+  const [landlordName, setLandlordName] = useState('')
+  const [landlordId, setLandlordId] = useState('')
+  const [tenantId, setTenantId] = useState('')
+  const [unitFullAddress, setUnitFullAddress] = useState('')
+  const [originalTaDate, setOriginalTaDate] = useState('')
+  const [prevSecurityDeposit, setPrevSecurityDeposit] = useState('')
+  const [prevUtilityDeposit, setPrevUtilityDeposit] = useState('')
+  const [newSecurityDeposit, setNewSecurityDeposit] = useState('')
+  const [newUtilityDeposit, setNewUtilityDeposit] = useState('')
+  const [renewalLength, setRenewalLength] = useState('1')  // years
+  const [renewalStartDate, setRenewalStartDate] = useState(today)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   const rental = parseFloat(monthlyRental) || 0
+
+  // Renewal computed
+  const secTopup = (parseFloat(newSecurityDeposit) || 0) - (parseFloat(prevSecurityDeposit) || 0)
+  const utilTopup = (parseFloat(newUtilityDeposit) || 0) - (parseFloat(prevUtilityDeposit) || 0)
+  const renewalEndDate = renewalStartDate
+    ? (() => {
+        const d = new Date(renewalStartDate)
+        d.setFullYear(d.getFullYear() + parseInt(renewalLength))
+        d.setDate(d.getDate() - 1)
+        return d.toISOString().split('T')[0]
+      })()
+    : ''
   const secDep = rental * 2
   const utilDep = rental * 0.5
 
@@ -383,8 +409,8 @@ function AddRecordModal({
         status: 'active',
         // Check-in fields
         move_in_date: type === 'checkin' ? (moveInDate || null) : null,
-        tenancy_start_date: type !== 'maintenance' ? (tenancyStart || null) : null,
-        tenancy_end_date: type !== 'maintenance' ? (tenancyEnd || null) : null,
+        tenancy_start_date: (type !== 'maintenance' && type !== 'renewal') ? (tenancyStart || null) : null,
+        tenancy_end_date: type === 'renewal' ? (tenancyEnd || null) : (type !== 'maintenance' ? (tenancyEnd || null) : null),
         // Check-out fields
         electricity_status: type === 'checkout' ? (electricityStatus as PropertyRecord['electricity_status'] || null) : null,
         water_status: type === 'checkout' ? (waterStatus as PropertyRecord['water_status'] || null) : null,
@@ -394,6 +420,20 @@ function AddRecordModal({
         tenant_bank_name: type === 'checkout' ? (bankName.trim() || null) : null,
         tenant_bank_account: type === 'checkout' ? (bankAccount.trim() || null) : null,
         co_agent_checkin: type === 'checkin' ? (coAgentMode === 'manual' ? coAgentName.trim() || null : null) : null,
+        // Renewal fields
+        landlord_name: type === 'renewal' ? (landlordName.trim() || null) : null,
+        landlord_id: type === 'renewal' ? (landlordId.trim() || null) : null,
+        tenant_id: type === 'renewal' ? (tenantId.trim() || null) : null,
+        unit_full_address: type === 'renewal' ? (unitFullAddress.trim() || null) : null,
+        original_ta_date: type === 'renewal' ? (originalTaDate || null) : null,
+        prev_security_deposit: type === 'renewal' ? (parseFloat(prevSecurityDeposit) || null) : null,
+        prev_utility_deposit: type === 'renewal' ? (parseFloat(prevUtilityDeposit) || null) : null,
+        new_security_deposit: type === 'renewal' ? (parseFloat(newSecurityDeposit) || null) : null,
+        new_utility_deposit: type === 'renewal' ? (newUtilityDeposit ? parseFloat(newUtilityDeposit) : null) : null,
+        security_topup: type === 'renewal' ? (secTopup || null) : null,
+        utility_topup: type === 'renewal' ? (utilTopup || null) : null,
+        renewal_start_date: type === 'renewal' ? (renewalStartDate || null) : null,
+        renewal_end_date: type === 'renewal' ? (renewalEndDate || null) : null,
       })
       onAdded()
     } catch (err: unknown) {
@@ -409,8 +449,8 @@ function AddRecordModal({
         {/* Record type */}
         <div>
           <p className="text-xs font-medium text-[#a89d84] mb-2">Record Type</p>
-          <div className="grid grid-cols-3 gap-2">
-            {(['checkin', 'checkout', 'maintenance'] as const).map((t) => (
+          <div className="grid grid-cols-2 gap-2">
+            {(['checkin', 'checkout', 'maintenance', 'renewal'] as const).map((t) => (
               <button
                 key={t}
                 type="button"
@@ -482,8 +522,8 @@ function AddRecordModal({
           />
         )}
 
-        {/* Tenancy period (check-in & check-out) */}
-        {type !== 'maintenance' && (
+        {/* Tenancy period (check-in & check-out only) */}
+        {type !== 'maintenance' && type !== 'renewal' && (
           <div className="grid grid-cols-2 gap-3">
             <Input
               label="Tenancy Start"
@@ -500,8 +540,8 @@ function AddRecordModal({
           </div>
         )}
 
-        {/* Financials (check-in & check-out) */}
-        {type !== 'maintenance' && (
+        {/* Financials (check-in & check-out only) */}
+        {type !== 'maintenance' && type !== 'renewal' && (
           <>
             <Input
               label="Monthly Rental (RM)"
@@ -586,6 +626,69 @@ function AddRecordModal({
                 placeholder="Account number"
               />
             </div>
+          </>
+        )}
+
+        {/* Renewal specific */}
+        {type === 'renewal' && (
+          <>
+            <p className="text-xs font-semibold text-[#7c6f54] uppercase tracking-wider pt-1">Landlord Info</p>
+            <Input label="Landlord Name" value={landlordName} onChange={(e) => setLandlordName(e.target.value)} placeholder="Full name" />
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="Landlord ID (NRIC/Passport)" value={landlordId} onChange={(e) => setLandlordId(e.target.value)} placeholder="e.g. 880101011234" />
+              <Input label="Tenant ID (NRIC/Passport)" value={tenantId} onChange={(e) => setTenantId(e.target.value)} placeholder="e.g. 900202022345" />
+            </div>
+            <Input label="Unit Full Address" value={unitFullAddress} onChange={(e) => setUnitFullAddress(e.target.value)} placeholder="Full postal address" />
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="Original TA Date" type="date" value={originalTaDate} onChange={(e) => setOriginalTaDate(e.target.value)} />
+              <Input label="Previous Tenancy Expiry" type="date" value={tenancyEnd} onChange={(e) => setTenancyEnd(e.target.value)} />
+            </div>
+            <p className="text-xs font-semibold text-[#7c6f54] uppercase tracking-wider pt-1">Renewal Terms</p>
+            <Input label="New Monthly Rental (RM)" type="number" value={monthlyRental} onChange={(e) => setMonthlyRental(e.target.value)} placeholder="0.00" prefix="RM" />
+            <div>
+              <p className="text-xs font-medium text-[#a89d84] mb-1.5">Renewal Length</p>
+              <div className="flex gap-2">
+                {['1', '2', '3'].map((y) => (
+                  <button key={y} type="button" onClick={() => setRenewalLength(y)}
+                    className={`flex-1 py-2 rounded-xl text-xs font-medium border transition-colors ${renewalLength === y ? 'bg-gold-500/20 border-gold-500/50 text-gold-300' : 'bg-[#262018] border-[#332c20] text-[#7c6f54]'}`}>
+                    {y} year{y !== '1' ? 's' : ''}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="Renewal Start Date" type="date" value={renewalStartDate} onChange={(e) => setRenewalStartDate(e.target.value)} />
+              <div>
+                <p className="text-xs font-medium text-[#a89d84] mb-1.5">Renewal End Date</p>
+                <div className="w-full rounded-xl border border-[#332c20] bg-[#262018]/50 px-3 py-2.5 text-sm text-[#7c6f54]">
+                  {renewalEndDate || '—'}
+                </div>
+              </div>
+            </div>
+            <p className="text-xs font-semibold text-[#7c6f54] uppercase tracking-wider pt-1">Deposits</p>
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="Prev Security Deposit (RM)" type="number" value={prevSecurityDeposit} onChange={(e) => setPrevSecurityDeposit(e.target.value)} />
+              <Input label="New Security Deposit (RM)" type="number" value={newSecurityDeposit} onChange={(e) => setNewSecurityDeposit(e.target.value)} />
+              <Input label="Prev Utility Deposit (RM)" type="number" value={prevUtilityDeposit} onChange={(e) => setPrevUtilityDeposit(e.target.value)} />
+              <Input label="New Utility Deposit (RM)" type="number" value={newUtilityDeposit} onChange={(e) => setNewUtilityDeposit(e.target.value)} />
+            </div>
+            {(prevSecurityDeposit || newSecurityDeposit || prevUtilityDeposit || newUtilityDeposit) && (
+              <div className="rounded-xl bg-[#262018] border border-[#332c20] p-3 space-y-1.5">
+                <p className="text-xs text-[#7c6f54] font-medium">Deposit Summary</p>
+                <div className="flex justify-between text-xs">
+                  <span className="text-[#a89d84]">Security Top-up</span>
+                  <span className={`font-medium ${secTopup > 0 ? 'text-gold-400' : 'text-[#7c6f54]'}`}>{secTopup > 0 ? `RM ${secTopup.toFixed(2)}` : 'RM 0.00'}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-[#a89d84]">Utility Top-up</span>
+                  <span className={`font-medium ${utilTopup > 0 ? 'text-gold-400' : 'text-[#7c6f54]'}`}>{utilTopup > 0 ? `RM ${utilTopup.toFixed(2)}` : 'RM 0.00'}</span>
+                </div>
+                <div className="flex justify-between text-xs border-t border-[#332c20] pt-1.5 mt-1">
+                  <span className="text-[#f5f0e8] font-medium">Total Top-up</span>
+                  <span className="text-gold-300 font-semibold">RM {(Math.max(0, secTopup) + Math.max(0, utilTopup)).toFixed(2)}</span>
+                </div>
+              </div>
+            )}
           </>
         )}
 

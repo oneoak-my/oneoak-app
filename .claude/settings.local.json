@@ -5,7 +5,12 @@
       "Bash(rm -rf /Users/elleensia/.npm/_cacache/content-v2/sha512/8f/43)",
       "Bash(curl -s http://localhost:3000)",
       "Bash(npx tsc *)",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(node -e \"require\\('@anthropic-ai/sdk'\\); console.log\\('ok'\\)\")",
+      "Bash(node -e \"require\\('docx'\\); console.log\\('ok'\\)\")"
     ]
   }
 }

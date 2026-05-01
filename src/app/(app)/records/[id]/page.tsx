@@ -26,6 +26,378 @@ import Input, { Select, Textarea } from '@/components/ui/Input'
 import EmptyState from '@/components/ui/EmptyState'
 import TaskSection from '@/components/tasks/TaskSection'
 
+// ── Renewal helpers ───────────────────────────────────────────────────────────
+
+function detectIdType(id: string | null | undefined): string {
+  if (!id) return 'NRIC/Passport No'
+  const cleaned = id.replace(/[-\s]/g, '')
+  return /^\d+$/.test(cleaned) ? 'NRIC No' : 'Passport No'
+}
+
+function computeRenewalLength(start: string | null, end: string | null): string {
+  if (!start || !end) return '—'
+  const s = new Date(start)
+  const e = new Date(end)
+  const months = (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth())
+  if (months % 12 === 0) {
+    const y = months / 12
+    return `${y} year${y !== 1 ? 's' : ''}`
+  }
+  return `${months} months`
+}
+
+function fmtDateLetter(s: string | null | undefined): string {
+  if (!s) return '—'
+  return new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+function fmtRMLetter(n: number | null | undefined): string {
+  if (n == null) return '0.00'
+  return n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+}
+
+async function downloadRenewalPdf(record: PropertyRecord): Promise<void> {
+  const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib')
+  const doc = await PDFDocument.create()
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold)
+  const regular = await doc.embedFont(StandardFonts.Helvetica)
+
+  const [PW, PH] = [595.28, 841.89]
+  const M = 55
+  const CW = PW - M * 2
+  const ink = rgb(0.08, 0.07, 0.05)
+  const mid = rgb(0.25, 0.22, 0.18)
+  const gold = rgb(0.56, 0.41, 0.25)
+
+  const page = doc.addPage([PW, PH])
+  let y = PH - M
+
+  // Try to load logo
+  try {
+    const logoRes = await fetch('/logo.png')
+    if (logoRes.ok) {
+      const logoBytes = new Uint8Array(await logoRes.arrayBuffer())
+      const logoImg = await doc.embedPng(logoBytes)
+      const lw = 120
+      const lh = (logoImg.height / logoImg.width) * lw
+      page.drawImage(logoImg, { x: M, y: y - lh, width: lw, height: lh })
+      y -= lh + 20
+    } else { y -= 20 }
+  } catch { y -= 20 }
+
+  // Title
+  const title = 'TENANCY RENEWAL AGREEMENT'
+  const titleW = bold.widthOfTextAtSize(title, 14)
+  page.drawText(title, { x: (PW - titleW) / 2, y, size: 14, font: bold, color: ink })
+  y -= 10
+  page.drawLine({ start: { x: M, y }, end: { x: PW - M, y }, thickness: 0.5, color: gold })
+  y -= 18
+
+  // Preamble paragraph
+  const landlordIdType = detectIdType(record.landlord_id)
+  const tenantIdType = detectIdType(record.tenant_id)
+  const renewalLen = computeRenewalLength(record.renewal_start_date, record.renewal_end_date)
+
+  // Helper: draw wrapped text block
+  function drawWrapped(text: string, opts: { font?: typeof bold; size?: number; color?: typeof ink; lineHeight?: number }): void {
+    const { font = regular, size = 10, color = ink, lineHeight = 15 } = opts
+    const words = text.split(' ')
+    let line = ''
+    for (const word of words) {
+      const test = line ? line + ' ' + word : word
+      if (font.widthOfTextAtSize(test, size) > CW) {
+        page.drawText(line, { x: M, y, size, font, color })
+        y -= lineHeight
+        line = word
+      } else {
+        line = test
+      }
+    }
+    if (line) { page.drawText(line, { x: M, y, size, font, color }); y -= lineHeight }
+  }
+
+  // Complex preamble with bold segments — draw parts manually
+  const preamble1 = `The Tenancy Renewal Agreement ("Agreement") is made by and between the "Landlord",`
+  drawWrapped(preamble1, {})
+  const landlordBold = `${record.landlord_name ?? '—'} (${landlordIdType}: ${record.landlord_id ?? '—'}),`
+  drawWrapped(landlordBold, { font: bold })
+  const preamble2 = `and the "Tenant",`
+  drawWrapped(preamble2, {})
+  const tenantBold = `${record.tenant_name ?? '—'} (${tenantIdType}: ${record.tenant_id ?? '—'})`
+  drawWrapped(tenantBold, { font: bold })
+  const preamble3 = `for the premise located at`
+  drawWrapped(preamble3, {})
+  const addressBold = `${record.unit_full_address ?? '—'}.`
+  drawWrapped(addressBold, { font: bold })
+  y -= 6
+
+  // Bullet points
+  function bullet(text: string): void {
+    const indent = M + 10
+    const bWidth = CW - 10
+    page.drawText('•', { x: M, y, size: 10, font: bold, color: ink })
+    const words = text.split(' ')
+    let line = ''
+    for (const word of words) {
+      const test = line ? line + ' ' + word : word
+      if (regular.widthOfTextAtSize(test, 10) > bWidth) {
+        page.drawText(line, { x: indent, y, size: 10, font: regular, color: ink })
+        y -= 14
+        line = word
+      } else { line = test }
+    }
+    if (line) { page.drawText(line, { x: indent, y, size: 10, font: regular, color: ink }); y -= 14 }
+    y -= 2
+  }
+
+  bullet(`With reference to the Tenancy Agreement dated ${fmtDateLetter(record.original_ta_date)}.`)
+  bullet(`Please be informed that the Tenancy Agreement is ending on ${fmtDateLetter(record.tenancy_end_date)}.`)
+  bullet(`Both the Landlord and the Tenant have confirmed the renewal of the Tenancy Agreement for a further term of ${renewalLen} at a monthly rental of RM ${fmtRMLetter(record.monthly_rental)}.`)
+  bullet(`The Deposits amount remained the same for the renewal of the Tenancy Agreement:`)
+  y -= 4
+
+  // Deposits table
+  const tX = M + 10
+  const colW = [200, 95, 95, 80]
+  const headers = ['Description', 'New Tenancy (RM)', 'Previous Tenancy (RM)', 'Top-Up (RM)']
+  const rowH = 18
+
+  // Header row
+  page.drawRectangle({ x: tX, y: y - rowH + 4, width: colW.reduce((a, b) => a + b, 0), height: rowH, color: rgb(0.93, 0.89, 0.80) })
+  let cx = tX + 4
+  headers.forEach((h, i) => {
+    page.drawText(h, { x: cx, y: y - 10, size: 8, font: bold, color: mid })
+    cx += colW[i]
+  })
+  y -= rowH
+
+  // Data rows
+  const prevSec = record.prev_security_deposit ?? 0
+  const newSec = record.new_security_deposit ?? 0
+  const prevUtil = record.prev_utility_deposit ?? 0
+  const newUtil = record.new_utility_deposit ?? 0
+  const secTop = record.security_topup ?? (newSec - prevSec)
+  const utilTop = record.utility_topup ?? (newUtil - prevUtil)
+  const tableRows = [
+    ['Security Deposit', fmtRMLetter(newSec), fmtRMLetter(prevSec), fmtRMLetter(secTop)],
+    ['Utilities Deposit', fmtRMLetter(newUtil), fmtRMLetter(prevUtil), fmtRMLetter(utilTop)],
+    ['Total', fmtRMLetter(newSec + newUtil), fmtRMLetter(prevSec + prevUtil), fmtRMLetter(secTop + utilTop)],
+  ]
+  tableRows.forEach((row, ri) => {
+    if (ri % 2 === 0) {
+      page.drawRectangle({ x: tX, y: y - rowH + 4, width: colW.reduce((a, b) => a + b, 0), height: rowH, color: rgb(0.97, 0.96, 0.94) })
+    }
+    cx = tX + 4
+    const isTotal = ri === tableRows.length - 1
+    row.forEach((cell, ci) => {
+      page.drawText(cell, { x: cx, y: y - 10, size: 9, font: isTotal ? bold : regular, color: ink })
+      cx += colW[ci]
+    })
+    y -= rowH
+  })
+
+  // Table border
+  const tableW = colW.reduce((a, b) => a + b, 0)
+  const tableTop = y + rowH * (tableRows.length + 1)
+  page.drawRectangle({ x: tX, y, width: tableW, height: tableTop - y, borderColor: rgb(0.7, 0.65, 0.55), borderWidth: 0.5 })
+  y -= 10
+
+  bullet(`The said extension shall effect from ${fmtDateLetter(record.renewal_start_date)} till ${fmtDateLetter(record.renewal_end_date)} and is subject to the terms and conditions as contained in the Tenancy Agreement dated ${fmtDateLetter(record.original_ta_date)}.`)
+  bullet(`In the event of any inconsistency between the terms of this Letter and the Tenancy Agreement, the terms of this Letter shall prevail.`)
+  y -= 10
+
+  page.drawText('In witness whereof the parties hereby agreed on the above mentioned terms and conditions:', {
+    x: M, y, size: 10, font: regular, color: ink,
+  })
+  y -= 30
+
+  // Two-column signature
+  const col1X = M
+  const col2X = M + (CW / 2) + 10
+
+  page.drawText("TENANT'S ACCEPTANCE", { x: col1X, y, size: 10, font: bold, color: ink })
+  page.drawText("LANDLORD'S ACCEPTANCE", { x: col2X, y, size: 10, font: bold, color: ink })
+  y -= 30
+
+  page.drawLine({ start: { x: col1X, y }, end: { x: col1X + 180, y }, thickness: 0.7, color: mid })
+  page.drawLine({ start: { x: col2X, y }, end: { x: col2X + 180, y }, thickness: 0.7, color: mid })
+  y -= 14
+
+  page.drawText('Signature', { x: col1X, y, size: 9, font: regular, color: mid })
+  page.drawText('Signature', { x: col2X, y, size: 9, font: regular, color: mid })
+  y -= 18
+
+  page.drawText(`Name: ${record.tenant_name ?? '—'}`, { x: col1X, y, size: 10, font: regular, color: ink })
+  page.drawText(`Name: ${record.landlord_name ?? '—'}`, { x: col2X, y, size: 10, font: regular, color: ink })
+  y -= 14
+
+  page.drawText(`${tenantIdType}: ${record.tenant_id ?? '—'}`, { x: col1X, y, size: 10, font: regular, color: ink })
+  page.drawText(`${landlordIdType}: ${record.landlord_id ?? '—'}`, { x: col2X, y, size: 10, font: regular, color: ink })
+
+  const bytes = await doc.save()
+  const blob = new Blob([bytes as unknown as BlobPart], { type: 'application/pdf' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = `renewal-letter-${record.unit?.unit_number ?? 'unit'}.pdf`; a.click()
+  URL.revokeObjectURL(url)
+}
+
+async function downloadRenewalWord(record: PropertyRecord): Promise<void> {
+  const {
+    Document, Packer, Paragraph, TextRun, AlignmentType,
+    Table, TableRow, TableCell, WidthType, BorderStyle,
+  } = await import('docx')
+
+  const landlordIdType = detectIdType(record.landlord_id)
+  const tenantIdType = detectIdType(record.tenant_id)
+  const renewalLen = computeRenewalLength(record.renewal_start_date, record.renewal_end_date)
+
+  const prevSec = record.prev_security_deposit ?? 0
+  const newSec = record.new_security_deposit ?? 0
+  const prevUtil = record.prev_utility_deposit ?? 0
+  const newUtil = record.new_utility_deposit ?? 0
+  const secTop = record.security_topup ?? (newSec - prevSec)
+  const utilTop = record.utility_topup ?? (newUtil - prevUtil)
+
+  function makeCell(text: string, isBold = false, isHeader = false) {
+    return new TableCell({
+      children: [new Paragraph({
+        children: [new TextRun({ text, bold: isBold, size: 20 })],
+      })],
+      shading: isHeader ? { fill: 'EDE4D4' } : undefined,
+    })
+  }
+
+  const depositsTable = new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: [
+      new TableRow({
+        children: [
+          makeCell('Description', true, true),
+          makeCell('New Tenancy (RM)', true, true),
+          makeCell('Previous Tenancy (RM)', true, true),
+          makeCell('Top-Up (RM)', true, true),
+        ],
+      }),
+      new TableRow({
+        children: [
+          makeCell('Security Deposit'),
+          makeCell(fmtRMLetter(newSec)),
+          makeCell(fmtRMLetter(prevSec)),
+          makeCell(fmtRMLetter(secTop)),
+        ],
+      }),
+      new TableRow({
+        children: [
+          makeCell('Utilities Deposit'),
+          makeCell(fmtRMLetter(newUtil)),
+          makeCell(fmtRMLetter(prevUtil)),
+          makeCell(fmtRMLetter(utilTop)),
+        ],
+      }),
+      new TableRow({
+        children: [
+          makeCell('Total', true),
+          makeCell(fmtRMLetter(newSec + newUtil), true),
+          makeCell(fmtRMLetter(prevSec + prevUtil), true),
+          makeCell(fmtRMLetter(secTop + utilTop), true),
+        ],
+      }),
+    ],
+  })
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function bp(children: any[]) {
+    return new Paragraph({
+      children: [new TextRun({ text: '• ', bold: true, size: 20 }), ...children],
+      spacing: { after: 100 },
+    })
+  }
+
+  const sigColWidth = 4500
+
+  const doc = new Document({
+    sections: [{
+      children: [
+        // Title
+        new Paragraph({
+          children: [new TextRun({ text: 'TENANCY RENEWAL AGREEMENT', bold: true, size: 28 })],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 200 },
+        }),
+        // Preamble
+        new Paragraph({
+          children: [
+            new TextRun({ text: 'The Tenancy Renewal Agreement ("Agreement") is made by and between the "Landlord", ', size: 20 }),
+            new TextRun({ text: `${record.landlord_name ?? '—'} (${landlordIdType}: ${record.landlord_id ?? '—'})`, bold: true, size: 20 }),
+            new TextRun({ text: ', and the "Tenant", ', size: 20 }),
+            new TextRun({ text: `${record.tenant_name ?? '—'} (${tenantIdType}: ${record.tenant_id ?? '—'})`, bold: true, size: 20 }),
+            new TextRun({ text: ' for the premise located at ', size: 20 }),
+            new TextRun({ text: `${record.unit_full_address ?? '—'}.`, bold: true, size: 20 }),
+          ],
+          spacing: { after: 200 },
+        }),
+        // Bullets
+        bp([new TextRun({ text: `With reference to the Tenancy Agreement dated `, size: 20 }), new TextRun({ text: fmtDateLetter(record.original_ta_date), bold: true, size: 20 }), new TextRun({ text: '.', size: 20 })]),
+        bp([new TextRun({ text: `Please be informed that the Tenancy Agreement is ending on `, size: 20 }), new TextRun({ text: fmtDateLetter(record.tenancy_end_date), bold: true, size: 20 }), new TextRun({ text: '.', size: 20 })]),
+        bp([new TextRun({ text: `Both the Landlord and the Tenant have confirmed the renewal of the Tenancy Agreement for a further term of ${renewalLen} at a monthly rental of `, size: 20 }), new TextRun({ text: `RM ${fmtRMLetter(record.monthly_rental)}.`, bold: true, size: 20 })]),
+        bp([new TextRun({ text: 'The Deposits amount remained the same for the renewal of the Tenancy Agreement:', size: 20 })]),
+        depositsTable,
+        new Paragraph({ text: '', spacing: { after: 100 } }),
+        bp([new TextRun({ text: `The said extension shall effect from `, size: 20 }), new TextRun({ text: fmtDateLetter(record.renewal_start_date), bold: true, size: 20 }), new TextRun({ text: ` till `, size: 20 }), new TextRun({ text: fmtDateLetter(record.renewal_end_date), bold: true, size: 20 }), new TextRun({ text: ` and is subject to the terms and conditions as contained in the Tenancy Agreement dated ${fmtDateLetter(record.original_ta_date)}.`, size: 20 })]),
+        bp([new TextRun({ text: 'In the event of any inconsistency between the terms of this Letter and the Tenancy Agreement, the terms of this Letter shall prevail.', size: 20 })]),
+        new Paragraph({ text: '', spacing: { after: 200 } }),
+        new Paragraph({
+          children: [new TextRun({ text: 'In witness whereof the parties hereby agreed on the above mentioned terms and conditions:', size: 20 })],
+          spacing: { after: 300 },
+        }),
+        // Signature table
+        new Table({
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          borders: {
+            top: { style: BorderStyle.NONE },
+            bottom: { style: BorderStyle.NONE },
+            left: { style: BorderStyle.NONE },
+            right: { style: BorderStyle.NONE },
+            insideHorizontal: { style: BorderStyle.NONE },
+            insideVertical: { style: BorderStyle.NONE },
+          },
+          rows: [
+            new TableRow({ children: [
+              new TableCell({ width: { size: sigColWidth, type: WidthType.DXA }, children: [new Paragraph({ children: [new TextRun({ text: "TENANT'S ACCEPTANCE", bold: true, size: 20 })] })] }),
+              new TableCell({ width: { size: sigColWidth, type: WidthType.DXA }, children: [new Paragraph({ children: [new TextRun({ text: "LANDLORD'S ACCEPTANCE", bold: true, size: 20 })] })] }),
+            ]}),
+            new TableRow({ children: [
+              new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: '_____________________________', size: 20 })] })] }),
+              new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: '_____________________________', size: 20 })] })] }),
+            ]}),
+            new TableRow({ children: [
+              new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Signature', size: 20, color: '78716C' })] })] }),
+              new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Signature', size: 20, color: '78716C' })] })] }),
+            ]}),
+            new TableRow({ children: [
+              new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `Name: ${record.tenant_name ?? '—'}`, size: 20 })] })] }),
+              new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `Name: ${record.landlord_name ?? '—'}`, size: 20 })] })] }),
+            ]}),
+            new TableRow({ children: [
+              new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${tenantIdType}: ${record.tenant_id ?? '—'}`, size: 20 })] })] }),
+              new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${landlordIdType}: ${record.landlord_id ?? '—'}`, size: 20 })] })] }),
+            ]}),
+          ],
+        }),
+      ],
+    }],
+  })
+
+  const blob = await Packer.toBlob(doc)
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = `renewal-letter-${record.unit?.unit_number ?? 'unit'}.docx`; a.click()
+  URL.revokeObjectURL(url)
+}
+
+// ── Vacating procedures ───────────────────────────────────────────────────────
+
 function buildVacatingProceduresUrl(unitNumber: string, tenantName: string): string {
   const msg = [
     `*Vacating Procedures — ${unitNumber}*`,
@@ -208,9 +580,29 @@ export default function RecordDetailPage() {
               Invoices
             </a>
           )}
-          <Button variant="ghost" size="sm" icon={<Share2 size={14} />} onClick={() => setShowReport(true)}>
-            Report
-          </Button>
+          {record.type === 'renewal' && (
+            <>
+              <button
+                onClick={() => downloadRenewalPdf(record)}
+                style={{ minHeight: '48px' }}
+                className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-xs font-medium bg-transparent hover:bg-[#262018] text-[#a89d84] hover:text-[#f5f0e8] transition-all"
+              >
+                📄 PDF
+              </button>
+              <button
+                onClick={() => downloadRenewalWord(record)}
+                style={{ minHeight: '48px' }}
+                className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-xs font-medium bg-transparent hover:bg-[#262018] text-[#a89d84] hover:text-[#f5f0e8] transition-all"
+              >
+                📝 Word
+              </button>
+            </>
+          )}
+          {record.type !== 'renewal' && (
+            <Button variant="ghost" size="sm" icon={<Share2 size={14} />} onClick={() => setShowReport(true)}>
+              Report
+            </Button>
+          )}
           {record.type === 'checkout' && (
             <a
               href={buildVacatingProceduresUrl(record.unit?.unit_number ?? '', record.tenant_name ?? '')}
@@ -257,8 +649,8 @@ export default function RecordDetailPage() {
         )}
       </div>
 
-      {/* Financials card */}
-      {(record.monthly_rental || record.security_deposit || record.utility_deposit) && (
+      {/* Financials card (non-renewal only) */}
+      {record.type !== 'renewal' && (record.monthly_rental || record.security_deposit || record.utility_deposit) && (
         <Card>
           <p className="text-xs font-semibold text-[#7c6f54] uppercase tracking-wider mb-3">Financials</p>
           {record.monthly_rental && (
@@ -280,6 +672,39 @@ export default function RecordDetailPage() {
               }
               className="border-t border-[#332c20] mt-1 pt-2"
             />
+          )}
+        </Card>
+      )}
+
+      {/* Renewal details */}
+      {record.type === 'renewal' && (
+        <Card>
+          <p className="text-xs font-semibold text-[#7c6f54] uppercase tracking-wider mb-3">Renewal Details</p>
+          {record.landlord_name && <CardRow label="Landlord" value={record.landlord_name} />}
+          {record.landlord_id && <CardRow label={`Landlord ${detectIdType(record.landlord_id)}`} value={record.landlord_id} />}
+          {record.tenant_id && <CardRow label={`Tenant ${detectIdType(record.tenant_id)}`} value={record.tenant_id} />}
+          {record.unit_full_address && <CardRow label="Full Address" value={record.unit_full_address} />}
+          {record.original_ta_date && <CardRow label="Original TA Date" value={formatDate(record.original_ta_date)} />}
+          {record.tenancy_end_date && <CardRow label="Previous Expiry" value={formatDate(record.tenancy_end_date)} />}
+          {record.renewal_start_date && (
+            <CardRow label="Renewal Period" value={`${formatDate(record.renewal_start_date)} – ${formatDate(record.renewal_end_date)} (${computeRenewalLength(record.renewal_start_date, record.renewal_end_date)})`} />
+          )}
+        </Card>
+      )}
+
+      {/* Renewal deposit summary */}
+      {record.type === 'renewal' && (record.prev_security_deposit != null || record.new_security_deposit != null) && (
+        <Card>
+          <p className="text-xs font-semibold text-[#7c6f54] uppercase tracking-wider mb-3">Deposit Renewal</p>
+          <CardRow label="New Monthly Rental" value={formatCurrency(record.monthly_rental)} />
+          <CardRow label="Prev Security Deposit" value={formatCurrency(record.prev_security_deposit)} />
+          <CardRow label="New Security Deposit" value={formatCurrency(record.new_security_deposit)} />
+          {(record.security_topup ?? 0) > 0 && <CardRow label="Security Top-up" value={<span className="text-gold-400 font-semibold">{formatCurrency(record.security_topup)}</span>} />}
+          <CardRow label="Prev Utility Deposit" value={formatCurrency(record.prev_utility_deposit)} />
+          <CardRow label="New Utility Deposit" value={formatCurrency(record.new_utility_deposit)} />
+          {(record.utility_topup ?? 0) > 0 && <CardRow label="Utility Top-up" value={<span className="text-gold-400 font-semibold">{formatCurrency(record.utility_topup)}</span>} />}
+          {((record.security_topup ?? 0) + (record.utility_topup ?? 0)) > 0 && (
+            <CardRow label="Total Top-up" value={<span className="text-gold-300 font-bold">{formatCurrency((record.security_topup ?? 0) + (record.utility_topup ?? 0))}</span>} className="border-t border-[#332c20] mt-1 pt-2" />
           )}
         </Card>
       )}
@@ -377,11 +802,11 @@ export default function RecordDetailPage() {
       {/* Services Status (checkout only) */}
       {record.type === 'checkout' && <ServicesStatusSection record={record} onSaved={load} />}
 
-      {/* Tasks */}
-      <TaskSection record={record} />
+      {/* Tasks (non-renewal only) */}
+      {record.type !== 'renewal' && <TaskSection record={record} />}
 
-      {/* Services */}
-      <div>
+      {/* Services (non-renewal only) */}
+      {record.type !== 'renewal' && <div>
         <div className="flex items-center justify-between mb-3">
           <p className="text-xs font-semibold text-[#7c6f54] uppercase tracking-wider">
             Services ({services.length})
@@ -419,7 +844,7 @@ export default function RecordDetailPage() {
             ))}
           </div>
         )}
-      </div>
+      </div>}
 
       {/* Modals */}
       <ServiceModal
