@@ -376,3 +376,40 @@ export async function createServiceProvider(data: { name: string; bank_name?: st
   if (error) throw error
   return result
 }
+
+// ── Renewals ───────────────────────────────────────────────────────────────────
+
+export async function getRenewalRecords(): Promise<(PropertyRecord & { unit: Unit })[]> {
+  const { data, error } = await supabase
+    .from('records')
+    .select('*, unit:units(*)')
+    .eq('type', 'checkin')
+    .eq('status', 'active')
+  if (error) throw error
+  return ((data ?? []) as (PropertyRecord & { unit: Unit })[]).filter(
+    (r) =>
+      r.record_status === 'Active Tenancy' ||
+      ((r.unit?.status ?? []) as string[]).includes('Tenanted'),
+  )
+}
+
+export async function createRenewal(data: Partial<import('./types').Renewal>): Promise<import('./types').Renewal> {
+  const { data: result, error } = await supabase
+    .from('renewals')
+    .insert(data)
+    .select()
+    .single()
+  if (error) throw error
+  return result
+}
+
+export async function updateRenewal(id: string, data: Partial<import('./types').Renewal>): Promise<import('./types').Renewal> {
+  const { data: result, error } = await supabase
+    .from('renewals')
+    .update({ ...data, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return result
+}

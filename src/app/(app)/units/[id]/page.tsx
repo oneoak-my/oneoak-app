@@ -344,6 +344,8 @@ function AddRecordModal({
   const [date, setDate] = useState(today)
   const [monthlyRental, setMonthlyRental] = useState('')
   const [notes, setNotes] = useState('')
+  const [coAgentMode, setCoAgentMode] = useState<'none' | 'manual'>('none')
+  const [coAgentName, setCoAgentName] = useState('')
   // Check-in extras
   const [moveInDate, setMoveInDate] = useState(today)
   const [tenancyStart, setTenancyStart] = useState(today)
@@ -391,6 +393,7 @@ function AddRecordModal({
         tenant_bank_holder: type === 'checkout' ? (bankHolder.trim() || null) : null,
         tenant_bank_name: type === 'checkout' ? (bankName.trim() || null) : null,
         tenant_bank_account: type === 'checkout' ? (bankAccount.trim() || null) : null,
+        co_agent_checkin: type === 'checkin' ? (coAgentMode === 'manual' ? coAgentName.trim() || null : null) : null,
       })
       onAdded()
     } catch (err: unknown) {
@@ -430,6 +433,38 @@ function AddRecordModal({
           onChange={(e) => setTenantName(e.target.value)}
           placeholder="Full name"
         />
+        {type === 'checkin' && (
+          <div className="flex flex-col gap-1.5">
+            <p className="text-xs font-medium text-[#a89d84]">Co-Agent</p>
+            {coAgentMode === 'none' ? (
+              <select
+                value=""
+                onChange={(e) => { if (e.target.value === '__manual__') setCoAgentMode('manual') }}
+                className="w-full rounded-xl border border-[#332c20] bg-[#262018] px-3 py-2.5 text-sm text-[#f5f0e8] focus:outline-none focus:border-gold-500/60 appearance-none cursor-pointer"
+              >
+                <option value="">No CoA (default)</option>
+                <option value="__manual__">Type manually...</option>
+              </select>
+            ) : (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => { setCoAgentMode('none'); setCoAgentName('') }}
+                  className="text-xs text-[#7c6f54] hover:text-[#a89d84] transition-colors"
+                >
+                  ← No CoA (clear)
+                </button>
+                <input
+                  type="text"
+                  value={coAgentName}
+                  onChange={(e) => setCoAgentName(e.target.value)}
+                  placeholder="Co-agent name"
+                  className="w-full rounded-xl border border-[#332c20] bg-[#262018] px-3 py-2.5 text-sm text-[#f5f0e8] placeholder-[#5c5040] focus:outline-none focus:border-gold-500/60 transition-colors"
+                />
+              </div>
+            )}
+          </div>
+        )}
         <Input
           label={type === 'checkout' ? 'Move-out Date' : 'Date'}
           type="date"

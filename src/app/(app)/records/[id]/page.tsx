@@ -26,6 +26,48 @@ import Input, { Select, Textarea } from '@/components/ui/Input'
 import EmptyState from '@/components/ui/EmptyState'
 import TaskSection from '@/components/tasks/TaskSection'
 
+function buildVacatingProceduresUrl(unitNumber: string, tenantName: string): string {
+  const msg = [
+    `*Vacating Procedures — ${unitNumber}*`,
+    '',
+    `Hi ${tenantName}, thank you for informing us of your intention to vacate. Please find below the procedures to ensure a smooth handover. 😊`,
+    '',
+    `*1️⃣ Confirm Move-out date*`,
+    `Kindly confirmed your move-out date. (Must be on or before your Tenancy Expiry Date).`,
+    '',
+    `*2️⃣ Condition of Unit*`,
+    `The unit must be returned in its original condition (fair wear & tear excepted), including:`,
+    `- Thorough cleaning of the entire unit (including steam clean of all curtains)`,
+    `- All air-conditioning units to be serviced`,
+    `- All holes patched and paintwork touched up`,
+    `- All electrical items in good working order`,
+    `- Plumbing in good working condition`,
+    `- All cabinet hinges are in good working condition`,
+    '',
+    `*3️⃣ Items to Return*`,
+    `Kindly ensure all of the following are returned on the move-out date:`,
+    `- All unit keys`,
+    `- Access card(s)`,
+    `- Car park RFID sticker / access card (if applicable)`,
+    `- Any other items provided at the commencement of tenancy`,
+    '',
+    `*4️⃣ Outstanding Bills*`,
+    `Please ensure all utility bills (water, electricity, indah water, gas) are fully settled prior to handover. Final meter readings will be recorded on the handover day.`,
+    '',
+    `*5️⃣ Handover Appointment*`,
+    `Kindly arrange a handover appointment with us at least *3 days before* your move-out date.`,
+    '',
+    `*6️⃣ Deposit Refund*`,
+    `The security deposit will be refunded within *30 days* from the handover date, less any deductions for outstanding amounts or damages (if any).`,
+    '',
+    `Should you have any questions, please don't hesitate to reach out.`,
+    `We look forward to a smooth handover.`,
+    '',
+    `Thank you! 🙏`,
+  ].join('\n')
+  return `https://wa.me/?text=${encodeURIComponent(msg)}`
+}
+
 export default function RecordDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
@@ -169,6 +211,17 @@ export default function RecordDetailPage() {
           <Button variant="ghost" size="sm" icon={<Share2 size={14} />} onClick={() => setShowReport(true)}>
             Report
           </Button>
+          {record.type === 'checkout' && (
+            <a
+              href={buildVacatingProceduresUrl(record.unit?.unit_number ?? '', record.tenant_name ?? '')}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ minHeight: '48px', minWidth: '48px' }}
+              className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-xs font-medium bg-transparent hover:bg-[#262018] text-[#a89d84] hover:text-[#f5f0e8] transition-all duration-150 touch-manipulation"
+            >
+              📤 Vacating
+            </a>
+          )}
           <Button variant="ghost" size="sm" icon={<Edit2 size={14} />} onClick={() => setShowEditRecord(true)} />
           <Button variant="ghost" size="sm" icon={<Trash2 size={14} />} onClick={handleDeleteRecord}
             className="text-red-400 hover:text-red-300" />
@@ -192,6 +245,9 @@ export default function RecordDetailPage() {
         <p className="text-sm text-[#7c6f54] mt-0.5">
           {record.unit?.unit_number} · {record.unit?.building} · {formatDate(record.date)}
         </p>
+        {record.co_agent_checkin && (
+          <p className="text-xs text-[#5c5040] mt-0.5">CoA: {record.co_agent_checkin}</p>
+        )}
         {(record.created_by || record.updated_by) && (
           <p style={{ fontSize: '11px' }} className="text-[#4a4030] mt-1">
             {record.created_by && `Created by ${record.created_by}`}

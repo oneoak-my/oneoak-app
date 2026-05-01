@@ -199,7 +199,12 @@ export default function SchedulePage() {
 
   return (
     <div className="py-5 space-y-4">
-      <h1 className="text-lg font-bold text-[#f5f0e8] px-4">Check-in Schedule</h1>
+      <div className="px-4 flex items-center justify-between">
+        <h1 className="text-lg font-bold text-[#f5f0e8]">Check-in Schedule</h1>
+        <Link href="/renewal" className="flex items-center gap-1 text-xs text-gold-400 hover:text-gold-300 transition-colors">
+          Renewals <ArrowRight size={12} />
+        </Link>
+      </div>
 
       {/* Filters */}
       <div className="px-4 flex flex-wrap gap-2 items-center">

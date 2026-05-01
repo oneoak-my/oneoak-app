@@ -114,6 +114,9 @@ export interface PropertyRecord {
   record_status: string | null
   appointment_time: string | null
   co_agent: string | null
+  co_agent_checkin: string | null
+  tenancy_expiry_override: string | null
+  renewal_action: string | null
   cleaning_status: string | null
   steam_cleaning_status: string | null
   aircond_status: string | null
@@ -225,4 +228,25 @@ export const PAYMENT_BY_COLORS: Record<PaymentBy, string> = {
   'Pay by Owner':                         'bg-blue-500/15 text-blue-400 border border-blue-500/25',
   'Pay by One Oak':                       'bg-purple-500/15 text-purple-400 border border-purple-500/25',
   'Tenant Pay Direct':                    'bg-orange-500/15 text-orange-400 border border-orange-500/25',
+}
+
+export interface Renewal {
+  id: string
+  record_id: string
+  unit_id: string
+  landlord_name: string | null
+  tenant_name: string | null
+  unit_address: string | null
+  old_rental: number | null
+  new_rental: number | null
+  old_deposit: number | null
+  new_deposit: number | null
+  top_up_amount: number | null
+  tenancy_start_date: string | null
+  tenancy_end_date: string | null
+  tenancy_length: string | null
+  signing_date: string | null
+  renewal_letter_url: string | null
+  created_at: string
+  updated_at: string
 }

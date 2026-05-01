@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
-  Building2, Receipt, LogIn, LogOut, Wrench, CalendarDays, ChevronRight, Plus,
+  Building2, Receipt, LogIn, LogOut, Wrench, CalendarDays, ChevronRight, Plus, RefreshCw,
 } from 'lucide-react'
 import {
   getUnits, getOutstandingServices, createUnit, extractError, testConnection,
@@ -153,6 +153,13 @@ export default function DashboardPage() {
           >
             <div className="p-2 rounded-lg bg-gold-500/10 text-gold-400"><Receipt size={16} /></div>
             <span className="text-sm font-medium text-[#f5f0e8]">View Bills</span>
+          </Link>
+          <Link
+            href="/renewal"
+            className="flex items-center gap-3 p-3.5 rounded-xl border border-[#332c20] bg-[#1e1a14] hover:border-gold-500/40 hover:bg-[#262018] transition-colors col-span-2"
+          >
+            <div className="p-2 rounded-lg bg-gold-500/10 text-gold-400"><RefreshCw size={16} /></div>
+            <span className="text-sm font-medium text-[#f5f0e8]">Tenancy Renewals</span>
           </Link>
         </div>
       </div>
