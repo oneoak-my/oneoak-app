@@ -34,7 +34,8 @@ function detectIdType(id: string | null | undefined): string {
   return /^\d+$/.test(cleaned) ? 'NRIC No' : 'Passport No'
 }
 
-function computeRenewalLength(start: string | null, end: string | null): string {
+function computeRenewalLength(start: string | null, end: string | null, custom?: string | null): string {
+  if (custom) return custom
   if (!start || !end) return '—'
   const s = new Date(start)
   const e = new Date(end)
@@ -96,7 +97,7 @@ async function downloadRenewalPdf(record: PropertyRecord): Promise<void> {
   // Preamble paragraph
   const landlordIdType = detectIdType(record.landlord_id)
   const tenantIdType = detectIdType(record.tenant_id)
-  const renewalLen = computeRenewalLength(record.renewal_start_date, record.renewal_end_date)
+  const renewalLen = computeRenewalLength(record.renewal_start_date, record.renewal_end_date, record.renewal_length_custom)
 
   // Helper: draw wrapped text block
   function drawWrapped(text: string, opts: { font?: typeof bold; size?: number; color?: typeof ink; lineHeight?: number }): void {
@@ -131,11 +132,14 @@ async function downloadRenewalPdf(record: PropertyRecord): Promise<void> {
   drawWrapped(addressBold, { font: bold })
   y -= 6
 
-  // Bullet points
-  function bullet(text: string): void {
-    const indent = M + 10
-    const bWidth = CW - 10
-    page.drawText('•', { x: M, y, size: 10, font: bold, color: ink })
+  // Numbered clauses
+  let clauseNum = 0
+  function numbered(text: string): void {
+    clauseNum++
+    const prefix = `${clauseNum}.`
+    const indent = M + 16
+    const bWidth = CW - 16
+    page.drawText(prefix, { x: M, y, size: 10, font: bold, color: ink })
     const words = text.split(' ')
     let line = ''
     for (const word of words) {
@@ -150,10 +154,20 @@ async function downloadRenewalPdf(record: PropertyRecord): Promise<void> {
     y -= 2
   }
 
-  bullet(`With reference to the Tenancy Agreement dated ${fmtDateLetter(record.original_ta_date)}.`)
-  bullet(`Please be informed that the Tenancy Agreement is ending on ${fmtDateLetter(record.tenancy_end_date)}.`)
-  bullet(`Both the Landlord and the Tenant have confirmed the renewal of the Tenancy Agreement for a further term of ${renewalLen} at a monthly rental of RM ${fmtRMLetter(record.monthly_rental)}.`)
-  bullet(`The Deposits amount remained the same for the renewal of the Tenancy Agreement:`)
+  const hasTopup = record.deposit_topup === true
+  const prevSec = record.prev_security_deposit ?? 0
+  const prevUtil = record.prev_utility_deposit ?? 0
+  const newSec = hasTopup ? (record.new_security_deposit ?? 0) : prevSec
+  const newUtil = hasTopup ? (record.new_utility_deposit ?? 0) : prevUtil
+  const secTop = hasTopup ? (record.security_topup ?? (newSec - prevSec)) : 0
+  const utilTop = hasTopup ? (record.utility_topup ?? (newUtil - prevUtil)) : 0
+
+  numbered(`With reference to the Tenancy Agreement dated ${fmtDateLetter(record.original_ta_date)}.`)
+  numbered(`Please be informed that the Tenancy Agreement is ending on ${fmtDateLetter(record.tenancy_end_date)}.`)
+  numbered(`Both the Landlord and the Tenant have confirmed the renewal of the Tenancy Agreement for a further term of ${renewalLen} at a monthly rental of RM ${fmtRMLetter(record.monthly_rental)}.`)
+  numbered(hasTopup
+    ? 'The Tenant is required to pay the following for renewal of the Tenancy Agreement:'
+    : 'The Deposits amount remained the same for the renewal of the Tenancy Agreement:')
   y -= 4
 
   // Deposits table
@@ -172,12 +186,6 @@ async function downloadRenewalPdf(record: PropertyRecord): Promise<void> {
   y -= rowH
 
   // Data rows
-  const prevSec = record.prev_security_deposit ?? 0
-  const newSec = record.new_security_deposit ?? 0
-  const prevUtil = record.prev_utility_deposit ?? 0
-  const newUtil = record.new_utility_deposit ?? 0
-  const secTop = record.security_topup ?? (newSec - prevSec)
-  const utilTop = record.utility_topup ?? (newUtil - prevUtil)
   const tableRows = [
     ['Security Deposit', fmtRMLetter(newSec), fmtRMLetter(prevSec), fmtRMLetter(secTop)],
     ['Utilities Deposit', fmtRMLetter(newUtil), fmtRMLetter(prevUtil), fmtRMLetter(utilTop)],
@@ -202,8 +210,11 @@ async function downloadRenewalPdf(record: PropertyRecord): Promise<void> {
   page.drawRectangle({ x: tX, y, width: tableW, height: tableTop - y, borderColor: rgb(0.7, 0.65, 0.55), borderWidth: 0.5 })
   y -= 10
 
-  bullet(`The said extension shall effect from ${fmtDateLetter(record.renewal_start_date)} till ${fmtDateLetter(record.renewal_end_date)} and is subject to the terms and conditions as contained in the Tenancy Agreement dated ${fmtDateLetter(record.original_ta_date)}.`)
-  bullet(`In the event of any inconsistency between the terms of this Letter and the Tenancy Agreement, the terms of this Letter shall prevail.`)
+  numbered(`The said extension shall effect from ${fmtDateLetter(record.renewal_start_date)} till ${fmtDateLetter(record.renewal_end_date)} and is subject to the terms and conditions as contained in the Tenancy Agreement dated ${fmtDateLetter(record.original_ta_date)}.`)
+  numbered(`In the event of any inconsistency between the terms of this Letter and the Tenancy Agreement, the terms of this Letter shall prevail.`)
+  if (record.additional_terms?.trim()) {
+    numbered(record.additional_terms.trim())
+  }
   y -= 10
 
   page.drawText('In witness whereof the parties hereby agreed on the above mentioned terms and conditions:', {
@@ -250,14 +261,15 @@ async function downloadRenewalWord(record: PropertyRecord): Promise<void> {
 
   const landlordIdType = detectIdType(record.landlord_id)
   const tenantIdType = detectIdType(record.tenant_id)
-  const renewalLen = computeRenewalLength(record.renewal_start_date, record.renewal_end_date)
+  const renewalLen = computeRenewalLength(record.renewal_start_date, record.renewal_end_date, record.renewal_length_custom)
 
+  const hasTopup = record.deposit_topup === true
   const prevSec = record.prev_security_deposit ?? 0
-  const newSec = record.new_security_deposit ?? 0
   const prevUtil = record.prev_utility_deposit ?? 0
-  const newUtil = record.new_utility_deposit ?? 0
-  const secTop = record.security_topup ?? (newSec - prevSec)
-  const utilTop = record.utility_topup ?? (newUtil - prevUtil)
+  const newSec = hasTopup ? (record.new_security_deposit ?? 0) : prevSec
+  const newUtil = hasTopup ? (record.new_utility_deposit ?? 0) : prevUtil
+  const secTop = hasTopup ? (record.security_topup ?? (newSec - prevSec)) : 0
+  const utilTop = hasTopup ? (record.utility_topup ?? (newUtil - prevUtil)) : 0
 
   function makeCell(text: string, isBold = false, isHeader = false) {
     return new TableCell({
@@ -306,13 +318,23 @@ async function downloadRenewalWord(record: PropertyRecord): Promise<void> {
     ],
   })
 
+  let clauseNum = 0
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function bp(children: any[]) {
+  function np(children: any[]) {
+    clauseNum++
     return new Paragraph({
-      children: [new TextRun({ text: '• ', bold: true, size: 20 }), ...children],
+      children: [new TextRun({ text: `${clauseNum}. `, bold: true, size: 20 }), ...children],
       spacing: { after: 100 },
     })
   }
+
+  const clause4Text = hasTopup
+    ? 'The Tenant is required to pay the following for renewal of the Tenancy Agreement:'
+    : 'The Deposits amount remained the same for the renewal of the Tenancy Agreement:'
+
+  const additionalTermsPara = record.additional_terms?.trim()
+    ? [np([new TextRun({ text: record.additional_terms.trim(), size: 20 })])]
+    : []
 
   const sigColWidth = 4500
 
@@ -337,15 +359,16 @@ async function downloadRenewalWord(record: PropertyRecord): Promise<void> {
           ],
           spacing: { after: 200 },
         }),
-        // Bullets
-        bp([new TextRun({ text: `With reference to the Tenancy Agreement dated `, size: 20 }), new TextRun({ text: fmtDateLetter(record.original_ta_date), bold: true, size: 20 }), new TextRun({ text: '.', size: 20 })]),
-        bp([new TextRun({ text: `Please be informed that the Tenancy Agreement is ending on `, size: 20 }), new TextRun({ text: fmtDateLetter(record.tenancy_end_date), bold: true, size: 20 }), new TextRun({ text: '.', size: 20 })]),
-        bp([new TextRun({ text: `Both the Landlord and the Tenant have confirmed the renewal of the Tenancy Agreement for a further term of ${renewalLen} at a monthly rental of `, size: 20 }), new TextRun({ text: `RM ${fmtRMLetter(record.monthly_rental)}.`, bold: true, size: 20 })]),
-        bp([new TextRun({ text: 'The Deposits amount remained the same for the renewal of the Tenancy Agreement:', size: 20 })]),
+        // Numbered clauses
+        np([new TextRun({ text: `With reference to the Tenancy Agreement dated `, size: 20 }), new TextRun({ text: fmtDateLetter(record.original_ta_date), bold: true, size: 20 }), new TextRun({ text: '.', size: 20 })]),
+        np([new TextRun({ text: `Please be informed that the Tenancy Agreement is ending on `, size: 20 }), new TextRun({ text: fmtDateLetter(record.tenancy_end_date), bold: true, size: 20 }), new TextRun({ text: '.', size: 20 })]),
+        np([new TextRun({ text: `Both the Landlord and the Tenant have confirmed the renewal of the Tenancy Agreement for a further term of ${renewalLen} at a monthly rental of `, size: 20 }), new TextRun({ text: `RM ${fmtRMLetter(record.monthly_rental)}.`, bold: true, size: 20 })]),
+        np([new TextRun({ text: clause4Text, size: 20 })]),
         depositsTable,
         new Paragraph({ text: '', spacing: { after: 100 } }),
-        bp([new TextRun({ text: `The said extension shall effect from `, size: 20 }), new TextRun({ text: fmtDateLetter(record.renewal_start_date), bold: true, size: 20 }), new TextRun({ text: ` till `, size: 20 }), new TextRun({ text: fmtDateLetter(record.renewal_end_date), bold: true, size: 20 }), new TextRun({ text: ` and is subject to the terms and conditions as contained in the Tenancy Agreement dated ${fmtDateLetter(record.original_ta_date)}.`, size: 20 })]),
-        bp([new TextRun({ text: 'In the event of any inconsistency between the terms of this Letter and the Tenancy Agreement, the terms of this Letter shall prevail.', size: 20 })]),
+        np([new TextRun({ text: `The said extension shall effect from `, size: 20 }), new TextRun({ text: fmtDateLetter(record.renewal_start_date), bold: true, size: 20 }), new TextRun({ text: ` till `, size: 20 }), new TextRun({ text: fmtDateLetter(record.renewal_end_date), bold: true, size: 20 }), new TextRun({ text: ` and is subject to the terms and conditions as contained in the Tenancy Agreement dated ${fmtDateLetter(record.original_ta_date)}.`, size: 20 })]),
+        np([new TextRun({ text: 'In the event of any inconsistency between the terms of this Letter and the Tenancy Agreement, the terms of this Letter shall prevail.', size: 20 })]),
+        ...additionalTermsPara,
         new Paragraph({ text: '', spacing: { after: 200 } }),
         new Paragraph({
           children: [new TextRun({ text: 'In witness whereof the parties hereby agreed on the above mentioned terms and conditions:', size: 20 })],
@@ -687,7 +710,7 @@ export default function RecordDetailPage() {
           {record.original_ta_date && <CardRow label="Original TA Date" value={formatDate(record.original_ta_date)} />}
           {record.tenancy_end_date && <CardRow label="Previous Expiry" value={formatDate(record.tenancy_end_date)} />}
           {record.renewal_start_date && (
-            <CardRow label="Renewal Period" value={`${formatDate(record.renewal_start_date)} – ${formatDate(record.renewal_end_date)} (${computeRenewalLength(record.renewal_start_date, record.renewal_end_date)})`} />
+            <CardRow label="Renewal Period" value={`${formatDate(record.renewal_start_date)} – ${formatDate(record.renewal_end_date)} (${computeRenewalLength(record.renewal_start_date, record.renewal_end_date, record.renewal_length_custom)})`} />
           )}
         </Card>
       )}

@@ -370,8 +370,12 @@ function AddRecordModal({
   const [prevUtilityDeposit, setPrevUtilityDeposit] = useState('')
   const [newSecurityDeposit, setNewSecurityDeposit] = useState('')
   const [newUtilityDeposit, setNewUtilityDeposit] = useState('')
-  const [renewalLength, setRenewalLength] = useState('1')  // years
+  const [renewalLength, setRenewalLength] = useState('1')  // '6mo' | '1' | '2' | '3' | 'custom'
+  const [renewalLengthCustom, setRenewalLengthCustom] = useState('')
   const [renewalStartDate, setRenewalStartDate] = useState(today)
+  const [renewalEndDateCustom, setRenewalEndDateCustom] = useState('')
+  const [depositTopup, setDepositTopup] = useState(false)
+  const [additionalTerms, setAdditionalTerms] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -380,14 +384,17 @@ function AddRecordModal({
   // Renewal computed
   const secTopup = (parseFloat(newSecurityDeposit) || 0) - (parseFloat(prevSecurityDeposit) || 0)
   const utilTopup = (parseFloat(newUtilityDeposit) || 0) - (parseFloat(prevUtilityDeposit) || 0)
-  const renewalEndDate = renewalStartDate
-    ? (() => {
-        const d = new Date(renewalStartDate)
-        d.setFullYear(d.getFullYear() + parseInt(renewalLength))
-        d.setDate(d.getDate() - 1)
-        return d.toISOString().split('T')[0]
-      })()
-    : ''
+  const renewalEndDate = renewalLength === 'custom'
+    ? renewalEndDateCustom
+    : renewalStartDate
+      ? (() => {
+          const d = new Date(renewalStartDate)
+          if (renewalLength === '6mo') d.setMonth(d.getMonth() + 6)
+          else d.setFullYear(d.getFullYear() + parseInt(renewalLength))
+          d.setDate(d.getDate() - 1)
+          return d.toISOString().split('T')[0]
+        })()
+      : ''
   const secDep = rental * 2
   const utilDep = rental * 0.5
 
@@ -428,12 +435,15 @@ function AddRecordModal({
         original_ta_date: type === 'renewal' ? (originalTaDate || null) : null,
         prev_security_deposit: type === 'renewal' ? (parseFloat(prevSecurityDeposit) || null) : null,
         prev_utility_deposit: type === 'renewal' ? (parseFloat(prevUtilityDeposit) || null) : null,
-        new_security_deposit: type === 'renewal' ? (parseFloat(newSecurityDeposit) || null) : null,
-        new_utility_deposit: type === 'renewal' ? (newUtilityDeposit ? parseFloat(newUtilityDeposit) : null) : null,
-        security_topup: type === 'renewal' ? (secTopup || null) : null,
-        utility_topup: type === 'renewal' ? (utilTopup || null) : null,
+        new_security_deposit: type === 'renewal' && depositTopup ? (parseFloat(newSecurityDeposit) || null) : null,
+        new_utility_deposit: type === 'renewal' && depositTopup ? (parseFloat(newUtilityDeposit) || null) : null,
+        security_topup: type === 'renewal' && depositTopup ? (secTopup || null) : null,
+        utility_topup: type === 'renewal' && depositTopup ? (utilTopup || null) : null,
         renewal_start_date: type === 'renewal' ? (renewalStartDate || null) : null,
         renewal_end_date: type === 'renewal' ? (renewalEndDate || null) : null,
+        deposit_topup: type === 'renewal' ? depositTopup : null,
+        additional_terms: type === 'renewal' ? (additionalTerms.trim() || null) : null,
+        renewal_length_custom: type === 'renewal' && renewalLength === 'custom' ? (renewalLengthCustom.trim() || null) : null,
       })
       onAdded()
     } catch (err: unknown) {
@@ -647,41 +657,70 @@ function AddRecordModal({
             <Input label="New Monthly Rental (RM)" type="number" value={monthlyRental} onChange={(e) => setMonthlyRental(e.target.value)} placeholder="0.00" prefix="RM" />
             <div>
               <p className="text-xs font-medium text-[#a89d84] mb-1.5">Renewal Length</p>
-              <div className="flex gap-2">
-                {['1', '2', '3'].map((y) => (
-                  <button key={y} type="button" onClick={() => setRenewalLength(y)}
-                    className={`flex-1 py-2 rounded-xl text-xs font-medium border transition-colors ${renewalLength === y ? 'bg-gold-500/20 border-gold-500/50 text-gold-300' : 'bg-[#262018] border-[#332c20] text-[#7c6f54]'}`}>
-                    {y} year{y !== '1' ? 's' : ''}
+              <div className="grid grid-cols-3 gap-2">
+                {([['6mo', '6 months'], ['1', '1 year'], ['2', '2 years'], ['3', '3 years'], ['custom', 'Custom']] as const).map(([val, label]) => (
+                  <button key={val} type="button" onClick={() => setRenewalLength(val)}
+                    className={`py-2 rounded-xl text-xs font-medium border transition-colors ${renewalLength === val ? 'bg-gold-500/20 border-gold-500/50 text-gold-300' : 'bg-[#262018] border-[#332c20] text-[#7c6f54]'}`}>
+                    {label}
                   </button>
                 ))}
               </div>
+              {renewalLength === 'custom' && (
+                <input
+                  type="text"
+                  value={renewalLengthCustom}
+                  onChange={(e) => setRenewalLengthCustom(e.target.value)}
+                  placeholder="e.g. 18 months"
+                  className="mt-2 w-full rounded-xl border border-[#332c20] bg-[#262018] px-3 py-2.5 text-sm text-[#f5f0e8] placeholder-[#5c5040] focus:outline-none focus:border-gold-500/60"
+                />
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Input label="Renewal Start Date" type="date" value={renewalStartDate} onChange={(e) => setRenewalStartDate(e.target.value)} />
-              <div>
-                <p className="text-xs font-medium text-[#a89d84] mb-1.5">Renewal End Date</p>
-                <div className="w-full rounded-xl border border-[#332c20] bg-[#262018]/50 px-3 py-2.5 text-sm text-[#7c6f54]">
-                  {renewalEndDate || '—'}
+              {renewalLength === 'custom' ? (
+                <Input label="Renewal End Date" type="date" value={renewalEndDateCustom} onChange={(e) => setRenewalEndDateCustom(e.target.value)} />
+              ) : (
+                <div>
+                  <p className="text-xs font-medium text-[#a89d84] mb-1.5">Renewal End Date</p>
+                  <div className="w-full rounded-xl border border-[#332c20] bg-[#262018]/50 px-3 py-2.5 text-sm text-[#7c6f54]">
+                    {renewalEndDate || '—'}
+                  </div>
                 </div>
+              )}
+            </div>
+            {/* Deposit top-up toggle */}
+            <div>
+              <p className="text-xs font-semibold text-[#7c6f54] uppercase tracking-wider mb-2">Deposit Top-up Required?</p>
+              <div className="flex gap-2">
+                {([false, true] as const).map((v) => (
+                  <button key={String(v)} type="button" onClick={() => setDepositTopup(v)}
+                    className={`flex-1 py-2 rounded-xl text-xs font-medium border transition-colors ${depositTopup === v ? 'bg-gold-500/20 border-gold-500/50 text-gold-300' : 'bg-[#262018] border-[#332c20] text-[#7c6f54]'}`}>
+                    {v ? 'Yes' : 'No'}
+                  </button>
+                ))}
               </div>
             </div>
             <p className="text-xs font-semibold text-[#7c6f54] uppercase tracking-wider pt-1">Deposits</p>
             <div className="grid grid-cols-2 gap-3">
               <Input label="Prev Security Deposit (RM)" type="number" value={prevSecurityDeposit} onChange={(e) => setPrevSecurityDeposit(e.target.value)} />
-              <Input label="New Security Deposit (RM)" type="number" value={newSecurityDeposit} onChange={(e) => setNewSecurityDeposit(e.target.value)} />
               <Input label="Prev Utility Deposit (RM)" type="number" value={prevUtilityDeposit} onChange={(e) => setPrevUtilityDeposit(e.target.value)} />
-              <Input label="New Utility Deposit (RM)" type="number" value={newUtilityDeposit} onChange={(e) => setNewUtilityDeposit(e.target.value)} />
+              {depositTopup && (
+                <>
+                  <Input label="New Security Deposit (RM)" type="number" value={newSecurityDeposit} onChange={(e) => setNewSecurityDeposit(e.target.value)} />
+                  <Input label="New Utility Deposit (RM)" type="number" value={newUtilityDeposit} onChange={(e) => setNewUtilityDeposit(e.target.value)} />
+                </>
+              )}
             </div>
-            {(prevSecurityDeposit || newSecurityDeposit || prevUtilityDeposit || newUtilityDeposit) && (
+            {depositTopup && (prevSecurityDeposit || newSecurityDeposit || prevUtilityDeposit || newUtilityDeposit) && (
               <div className="rounded-xl bg-[#262018] border border-[#332c20] p-3 space-y-1.5">
-                <p className="text-xs text-[#7c6f54] font-medium">Deposit Summary</p>
+                <p className="text-xs text-[#7c6f54] font-medium">Top-up Summary</p>
                 <div className="flex justify-between text-xs">
                   <span className="text-[#a89d84]">Security Top-up</span>
-                  <span className={`font-medium ${secTopup > 0 ? 'text-gold-400' : 'text-[#7c6f54]'}`}>{secTopup > 0 ? `RM ${secTopup.toFixed(2)}` : 'RM 0.00'}</span>
+                  <span className={`font-medium ${secTopup > 0 ? 'text-gold-400' : 'text-[#7c6f54]'}`}>RM {Math.max(0, secTopup).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-xs">
                   <span className="text-[#a89d84]">Utility Top-up</span>
-                  <span className={`font-medium ${utilTopup > 0 ? 'text-gold-400' : 'text-[#7c6f54]'}`}>{utilTopup > 0 ? `RM ${utilTopup.toFixed(2)}` : 'RM 0.00'}</span>
+                  <span className={`font-medium ${utilTopup > 0 ? 'text-gold-400' : 'text-[#7c6f54]'}`}>RM {Math.max(0, utilTopup).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-xs border-t border-[#332c20] pt-1.5 mt-1">
                   <span className="text-[#f5f0e8] font-medium">Total Top-up</span>
@@ -689,6 +728,17 @@ function AddRecordModal({
                 </div>
               </div>
             )}
+            {/* Additional terms */}
+            <div>
+              <p className="text-xs font-medium text-[#a89d84] mb-1.5">Additional Terms (optional)</p>
+              <textarea
+                value={additionalTerms}
+                onChange={(e) => setAdditionalTerms(e.target.value)}
+                placeholder="e.g. Tenant shall maintain the garden..."
+                rows={3}
+                className="w-full rounded-xl border border-[#332c20] bg-[#262018] px-3 py-2.5 text-sm text-[#f5f0e8] placeholder-[#5c5040] focus:outline-none focus:border-gold-500/60 resize-none"
+              />
+            </div>
           </>
         )}
 

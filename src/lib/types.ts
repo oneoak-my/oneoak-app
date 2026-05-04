@@ -134,6 +134,9 @@ export interface PropertyRecord {
   utility_topup: number | null
   renewal_start_date: string | null
   renewal_end_date: string | null
+  deposit_topup: boolean | null
+  additional_terms: string | null
+  renewal_length_custom: string | null
   created_by: string | null
   updated_by: string | null
   created_at: string
