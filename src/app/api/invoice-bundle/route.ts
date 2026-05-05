@@ -58,10 +58,10 @@ export async function GET(request: Request) {
     const recordId = searchParams.get('recordId')
     if (!recordId) return NextResponse.json({ error: 'recordId required' }, { status: 400 })
 
-    // Fetch record with nested unit + services + providers
+    // Fetch record with unit
     const { data: record, error } = await supabase
       .from('records')
-      .select('*, unit:units(*), services(*, provider:service_providers(*))')
+      .select('*, unit:units(*)')
       .eq('id', recordId)
       .single()
 
@@ -69,7 +69,16 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Record not found' }, { status: 404 })
     }
 
-    const allServices = (record.services ?? []) as Array<{
+    // Fetch services separately to avoid nested join issues
+    const { data: servicesData } = await supabase
+      .from('services')
+      .select('*, provider:service_providers(*)')
+      .eq('record_id', recordId)
+
+    console.log('services fetched:', servicesData?.length)
+    console.log('first service:', servicesData?.[0])
+
+    type ServiceRow = {
       id: string
       description: string
       amount: number
@@ -79,15 +88,16 @@ export async function GET(request: Request) {
       invoice_url_3: string | null
       notes: string | null
       provider: { name: string; bank_name: string; bank_account: string } | null
-    }>
+    }
 
-    // Include Deduct from Deposit, Deduct from Deposit + Pay by One Oak, and Tenant Pay Direct
-    const services = allServices.filter(
-      (s) =>
-        s.payment_by === 'Deduct from Deposit' ||
-        s.payment_by === 'Deduct from Deposit + Pay by One Oak' ||
-        s.payment_by === 'Tenant Pay Direct',
+    const allServices = (servicesData ?? []) as ServiceRow[]
+
+    // Cover shows all services; invoice pages only use services with files
+    const services = allServices
+    const servicesWithInvoices = allServices.filter(
+      (s) => s.invoice_url || s.invoice_url_2 || s.invoice_url_3,
     )
+
     const unit = record.unit as { unit_number: string; building: string } | null
 
     // ── Build PDF ─────────────────────────────────────────────────────────────
@@ -120,7 +130,7 @@ export async function GET(request: Request) {
         const logoImg = await pdfDoc.embedPng(logoBytes)
         const { height: pageHeight } = cover.getSize()
         const { width: imgWidth, height: imgHeight } = logoImg
-        const logoDisplayWidth = 200
+        const logoDisplayWidth = 160
         const logoDisplayHeight = (imgHeight / imgWidth) * logoDisplayWidth
         cover.drawImage(logoImg, {
           x: 40,
@@ -195,7 +205,7 @@ export async function GET(request: Request) {
 
     // ── Invoice pages ─────────────────────────────────────────────────────────
 
-    for (const service of services) {
+    for (const service of servicesWithInvoices) {
       const invoiceUrls = [service.invoice_url, service.invoice_url_2, service.invoice_url_3].filter(Boolean) as string[]
       for (const url of invoiceUrls) {
         const mime = mimeFromUrl(url)

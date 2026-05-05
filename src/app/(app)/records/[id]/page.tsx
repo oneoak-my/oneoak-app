@@ -1050,7 +1050,10 @@ type InvoiceItem = { kind: 'existing'; url: string } | { kind: 'new'; file: File
 
 function invoiceDisplayName(item: InvoiceItem): string {
   if (item.kind === 'new') return item.file.name
-  return item.url.split('/').pop()?.split('?')[0] ?? 'invoice'
+  const raw = item.url.split('/').pop()?.split('?')[0] ?? 'invoice'
+  // Strip UUID prefix like "96d76868-735e-4400-8e58-8d5b6be4e5da_"
+  const clean = raw.replace(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_?/i, '') || raw
+  return clean.length > 30 ? clean.slice(0, 27) + '…' : clean
 }
 
 function ServiceModal({
@@ -1345,7 +1348,7 @@ function ServiceModal({
           <p className="text-[11px] text-[#4a4030]">Added by {editService.created_by}</p>
         )}
         {error && <p className="text-sm text-red-400">{error}</p>}
-        <div className="flex gap-3 pt-2">
+        <div className="sticky bottom-0 bg-[#1e1a14] -mx-5 px-5 pt-3 pb-5 border-t border-[#332c20] flex gap-3 mt-2">
           <Button variant="secondary" type="button" fullWidth onClick={onClose}>Cancel</Button>
           <Button variant="primary" type="submit" fullWidth loading={loading}>
             {editService ? 'Save Changes' : 'Add Service'}
@@ -1689,7 +1692,7 @@ Use YYYY-MM-DD format for all dates. Use null for any field not found.`
         />
         <Textarea label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
         {error && <p className="text-sm text-red-400">{error}</p>}
-        <div className="flex gap-3 pt-2">
+        <div className="sticky bottom-0 bg-[#1e1a14] -mx-5 px-5 pt-3 pb-5 border-t border-[#332c20] flex gap-3 mt-2">
           <Button variant="secondary" type="button" fullWidth onClick={onClose}>Cancel</Button>
           <Button variant="primary" type="submit" fullWidth loading={loading}>Save Changes</Button>
         </div>
