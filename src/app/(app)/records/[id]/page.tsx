@@ -28,6 +28,15 @@ import TaskSection from '@/components/tasks/TaskSection'
 
 // ── Renewal helpers ───────────────────────────────────────────────────────────
 
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve((reader.result as string).split(',')[1])
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
 function detectIdType(id: string | null | undefined): string {
   if (!id) return 'NRIC/Passport No'
   const cleaned = id.replace(/[-\s]/g, '')
@@ -421,23 +430,27 @@ async function downloadRenewalWord(record: PropertyRecord): Promise<void> {
 
 // ── Vacating procedures ───────────────────────────────────────────────────────
 
-function buildVacatingProceduresUrl(unitNumber: string, tenantName: string): string {
+function buildVacatingProceduresUrl(unitNumber: string, tenantName: string, lister?: string | null): string {
   const msg = [
-    `*Vacating Procedures — ${unitNumber}*`,
+    `*Move-Out Procedures — ${unitNumber}*`,
     '',
-    `Hi ${tenantName}, thank you for informing us of your intention to vacate. Please find below the procedures to ensure a smooth handover. 😊`,
+    `Hi ${tenantName}, thank you for informing us of your intention to move-out.`,
+    '',
+    `Please find below the procedures to ensure a smooth handover. 😊`,
     '',
     `*1️⃣ Confirm Move-out date*`,
-    `Kindly confirmed your move-out date. (Must be on or before your Tenancy Expiry Date).`,
+    `Kindly confirmed tenant's move-out date. (Must be on or before your Tenancy Expiry Date).`,
     '',
     `*2️⃣ Condition of Unit*`,
     `The unit must be returned in its original condition (fair wear & tear excepted), including:`,
     `- Thorough cleaning of the entire unit (including steam clean of all curtains)`,
     `- All air-conditioning units to be serviced`,
-    `- All holes patched and paintwork touched up`,
+    `- All paintwork touched up`,
     `- All electrical items in good working order`,
     `- Plumbing in good working condition`,
     `- All cabinet hinges are in good working condition`,
+    '',
+    `A copy of the invoice for all services carried out must be provided as supporting proof upon check-out.`,
     '',
     `*3️⃣ Items to Return*`,
     `Kindly ensure all of the following are returned on the move-out date:`,
@@ -447,18 +460,15 @@ function buildVacatingProceduresUrl(unitNumber: string, tenantName: string): str
     `- Any other items provided at the commencement of tenancy`,
     '',
     `*4️⃣ Outstanding Bills*`,
-    `Please ensure all utility bills (water, electricity, indah water, gas) are fully settled prior to handover. Final meter readings will be recorded on the handover day.`,
+    `Please ensure all utility bills (water, electricity, indah water, gas) are fully settled till the latest month prior to handover.`,
     '',
     `*5️⃣ Handover Appointment*`,
     `Kindly arrange a handover appointment with us at least *3 days before* your move-out date.`,
     '',
-    `*6️⃣ Deposit Refund*`,
-    `The security deposit will be refunded within *30 days* from the handover date, less any deductions for outstanding amounts or damages (if any).`,
-    '',
     `Should you have any questions, please don't hesitate to reach out.`,
-    `We look forward to a smooth handover.`,
     '',
     `Thank you! 🙏`,
+    lister ?? '',
   ].join('\n')
   return `https://wa.me/?text=${encodeURIComponent(msg)}`
 }
@@ -628,7 +638,7 @@ export default function RecordDetailPage() {
           )}
           {record.type === 'checkout' && (
             <a
-              href={buildVacatingProceduresUrl(record.unit?.unit_number ?? '', record.tenant_name ?? '')}
+              href={buildVacatingProceduresUrl(record.unit?.unit_number ?? '', record.tenant_name ?? '', record.unit?.lister)}
               target="_blank"
               rel="noopener noreferrer"
               style={{ minHeight: '48px', minWidth: '48px' }}
@@ -1379,6 +1389,19 @@ function EditRecordModal({
   const [bankHolder, setBankHolder] = useState(record.tenant_bank_holder ?? '')
   const [bankName, setBankName] = useState(record.tenant_bank_name ?? '')
   const [bankAccount, setBankAccount] = useState(record.tenant_bank_account ?? '')
+  // Renewal fields
+  const [landlordName, setLandlordName] = useState(record.landlord_name ?? '')
+  const [landlordId, setLandlordId] = useState(record.landlord_id ?? '')
+  const [tenantId, setTenantId] = useState(record.tenant_id ?? '')
+  const [unitFullAddress, setUnitFullAddress] = useState(record.unit_full_address ?? '')
+  const [originalTaDate, setOriginalTaDate] = useState(record.original_ta_date ?? '')
+  const [renewalStart, setRenewalStart] = useState(record.renewal_start_date ?? '')
+  const [renewalEnd, setRenewalEnd] = useState(record.renewal_end_date ?? '')
+  const [prevSecurity, setPrevSecurity] = useState(String(record.prev_security_deposit ?? ''))
+  const [prevUtility, setPrevUtility] = useState(String(record.prev_utility_deposit ?? ''))
+  const [autoFilledFields, setAutoFilledFields] = useState<Set<string>>(new Set())
+  const [reading, setReading] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -1390,17 +1413,79 @@ function EditRecordModal({
     }
   }
 
+  async function handleDocUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setReading(true)
+    setError('')
+    try {
+      const base64 = await fileToBase64(file)
+      const prompt = `Extract the following from this tenancy agreement or renewal letter document:
+- Landlord full name
+- Landlord ID (NRIC or passport number)
+- Tenant full name
+- Tenant ID (NRIC or passport number)
+- Unit full address
+- Original tenancy agreement date
+- Tenancy start date
+- Tenancy end date / expiry date
+- Monthly rental amount (number only)
+- Security deposit amount (number only)
+- Utility deposit amount (number only)
+Return as JSON with these exact keys:
+landlord_name, landlord_id, tenant_name, tenant_id, unit_full_address, original_ta_date, renewal_start_date, renewal_end_date, monthly_rental, security_deposit, utility_deposit
+Use YYYY-MM-DD format for all dates. Use null for any field not found.`
+      const res = await fetch('/api/read-document', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ base64, mimeType: file.type || 'image/jpeg', prompt }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      const data = await res.json()
+      const filled = new Set<string>()
+      if (data.landlord_name) { setLandlordName(data.landlord_name); filled.add('landlord_name') }
+      if (data.landlord_id) { setLandlordId(data.landlord_id); filled.add('landlord_id') }
+      if (data.tenant_name) { setTenantName(data.tenant_name); filled.add('tenant_name') }
+      if (data.tenant_id) { setTenantId(data.tenant_id); filled.add('tenant_id') }
+      if (data.unit_full_address) { setUnitFullAddress(data.unit_full_address); filled.add('unit_full_address') }
+      if (data.original_ta_date) { setOriginalTaDate(data.original_ta_date); filled.add('original_ta_date') }
+      if (data.renewal_start_date) { setRenewalStart(data.renewal_start_date); filled.add('renewal_start_date') }
+      if (data.renewal_end_date) { setRenewalEnd(data.renewal_end_date); filled.add('renewal_end_date') }
+      if (data.monthly_rental != null) { setMonthlyRental(String(data.monthly_rental)); filled.add('monthly_rental') }
+      if (data.security_deposit != null) { setPrevSecurity(String(data.security_deposit)); filled.add('security_deposit') }
+      if (data.utility_deposit != null) { setPrevUtility(String(data.utility_deposit)); filled.add('utility_deposit') }
+      setAutoFilledFields(filled)
+    } catch (e) {
+      setError(`Could not read document: ${e}`)
+    } finally {
+      setReading(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError('')
     try {
+      const safeNum = (v: string) => v ? Math.round(parseFloat(v) * 100) / 100 || null : null
+      const renewalFields: Partial<PropertyRecord> = record.type === 'renewal' ? {
+        landlord_name: landlordName.trim() || null,
+        landlord_id: landlordId.trim() || null,
+        tenant_id: tenantId.trim() || null,
+        unit_full_address: unitFullAddress.trim() || null,
+        original_ta_date: originalTaDate || null,
+        renewal_start_date: renewalStart || null,
+        renewal_end_date: renewalEnd || null,
+        prev_security_deposit: safeNum(prevSecurity),
+        prev_utility_deposit: safeNum(prevUtility),
+      } : {}
       await updateRecord(record.id, {
         tenant_name: tenantName.trim() || null,
         date,
-        monthly_rental: parseFloat(monthlyRental) || null,
-        security_deposit: parseFloat(securityDeposit) || null,
-        utility_deposit: parseFloat(utilityDeposit) || null,
+        monthly_rental: safeNum(monthlyRental),
+        security_deposit: safeNum(securityDeposit),
+        utility_deposit: safeNum(utilityDeposit),
         notes: notes.trim() || null,
         status,
         move_in_date: moveInDate || null,
@@ -1413,6 +1498,7 @@ function EditRecordModal({
         tenant_bank_holder: bankHolder.trim() || null,
         tenant_bank_name: bankName.trim() || null,
         tenant_bank_account: bankAccount.trim() || null,
+        ...renewalFields,
       })
       onSaved()
     } catch (err: unknown) {
@@ -1425,7 +1511,33 @@ function EditRecordModal({
   return (
     <Modal open={open} onClose={onClose} title="Edit Record">
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Input label="Tenant Name" value={tenantName} onChange={(e) => setTenantName(e.target.value)} />
+        {record.type === 'renewal' && (
+          <div className="rounded-xl border border-[#332c20] bg-[#141108] p-4 space-y-2">
+            <p className="text-[11px] font-semibold text-[#7c6f54] uppercase tracking-wider">Auto-fill from Document</p>
+            <div className="flex items-center gap-3 flex-wrap">
+              <input ref={fileRef} type="file" accept="image/*,.pdf" className="hidden" onChange={handleDocUpload} />
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={reading}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#332c20] bg-[#1e1a14] hover:bg-[#262018] text-sm text-[#a89d84] transition-colors disabled:opacity-50"
+              >
+                <Upload size={14} />
+                {reading ? 'Reading…' : 'Upload TA / Renewal Letter'}
+              </button>
+              {reading && <span className="text-xs text-[#7c6f54]">Claude is reading…</span>}
+              {autoFilledFields.size > 0 && !reading && (
+                <span className="text-xs text-emerald-400">{autoFilledFields.size} field{autoFilledFields.size !== 1 ? 's' : ''} auto-filled ✓</span>
+              )}
+            </div>
+          </div>
+        )}
+        <Input
+          label="Tenant Name"
+          value={tenantName}
+          onChange={(e) => setTenantName(e.target.value)}
+          className={autoFilledFields.has('tenant_name') ? 'ring-1 ring-emerald-500/40' : ''}
+        />
         <Input label="Date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         {record.type === 'checkin' && (
           <Input label="Move-in Date" type="date" value={moveInDate} onChange={(e) => setMoveInDate(e.target.value)} />
@@ -1443,9 +1555,11 @@ function EditRecordModal({
                 <Input
                   label="Monthly Rental (RM)"
                   type="number"
+                  step="0.01"
                   value={monthlyRental}
                   onChange={(e) => setMonthlyRental(e.target.value)}
                   prefix="RM"
+                  className={autoFilledFields.has('monthly_rental') ? 'ring-1 ring-emerald-500/40' : ''}
                 />
               </div>
               <Button type="button" variant="outline" size="sm" onClick={autoFillDeposits}>
@@ -1456,6 +1570,7 @@ function EditRecordModal({
               <Input
                 label="Security Deposit"
                 type="number"
+                step="0.01"
                 value={securityDeposit}
                 onChange={(e) => setSecurityDeposit(e.target.value)}
                 prefix="RM"
@@ -1463,6 +1578,7 @@ function EditRecordModal({
               <Input
                 label="Utility Deposit"
                 type="number"
+                step="0.01"
                 value={utilityDeposit}
                 onChange={(e) => setUtilityDeposit(e.target.value)}
                 prefix="RM"
@@ -1484,6 +1600,81 @@ function EditRecordModal({
             <div className="grid grid-cols-2 gap-3">
               <Input label="Bank Name" value={bankName} onChange={(e) => setBankName(e.target.value)} />
               <Input label="Account No." value={bankAccount} onChange={(e) => setBankAccount(e.target.value)} />
+            </div>
+          </>
+        )}
+        {/* Renewal-specific fields */}
+        {record.type === 'renewal' && (
+          <>
+            <p className="text-xs font-semibold text-[#7c6f54] uppercase tracking-wider pt-1">Renewal Info</p>
+            <Input
+              label="Landlord Name"
+              value={landlordName}
+              onChange={(e) => setLandlordName(e.target.value)}
+              className={autoFilledFields.has('landlord_name') ? 'ring-1 ring-emerald-500/40' : ''}
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="Landlord ID (NRIC/Passport)"
+                value={landlordId}
+                onChange={(e) => setLandlordId(e.target.value)}
+                className={autoFilledFields.has('landlord_id') ? 'ring-1 ring-emerald-500/40' : ''}
+              />
+              <Input
+                label="Tenant ID (NRIC/Passport)"
+                value={tenantId}
+                onChange={(e) => setTenantId(e.target.value)}
+                className={autoFilledFields.has('tenant_id') ? 'ring-1 ring-emerald-500/40' : ''}
+              />
+            </div>
+            <Input
+              label="Unit Full Address"
+              value={unitFullAddress}
+              onChange={(e) => setUnitFullAddress(e.target.value)}
+              className={autoFilledFields.has('unit_full_address') ? 'ring-1 ring-emerald-500/40' : ''}
+            />
+            <Input
+              label="Original TA Date"
+              type="date"
+              value={originalTaDate}
+              onChange={(e) => setOriginalTaDate(e.target.value)}
+              className={autoFilledFields.has('original_ta_date') ? 'ring-1 ring-emerald-500/40' : ''}
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="Renewal Start"
+                type="date"
+                value={renewalStart}
+                onChange={(e) => setRenewalStart(e.target.value)}
+                className={autoFilledFields.has('renewal_start_date') ? 'ring-1 ring-emerald-500/40' : ''}
+              />
+              <Input
+                label="Renewal End"
+                type="date"
+                value={renewalEnd}
+                onChange={(e) => setRenewalEnd(e.target.value)}
+                className={autoFilledFields.has('renewal_end_date') ? 'ring-1 ring-emerald-500/40' : ''}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="Prev Security Deposit (RM)"
+                type="number"
+                step="0.01"
+                value={prevSecurity}
+                onChange={(e) => setPrevSecurity(e.target.value)}
+                prefix="RM"
+                className={autoFilledFields.has('security_deposit') ? 'ring-1 ring-emerald-500/40' : ''}
+              />
+              <Input
+                label="Prev Utility Deposit (RM)"
+                type="number"
+                step="0.01"
+                value={prevUtility}
+                onChange={(e) => setPrevUtility(e.target.value)}
+                prefix="RM"
+                className={autoFilledFields.has('utility_deposit') ? 'ring-1 ring-emerald-500/40' : ''}
+              />
             </div>
           </>
         )}

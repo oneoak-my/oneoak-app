@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk'
 
 export async function POST(request: Request) {
   try {
-    const { base64, mimeType } = await request.json()
+    const { base64, mimeType, prompt: customPrompt } = await request.json()
     if (!base64 || !mimeType) {
       return NextResponse.json({ error: 'base64 and mimeType required' }, { status: 400 })
     }
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
             contentBlock,
             {
               type: 'text',
-              text: 'Extract the following from this tenancy agreement: landlord name, tenant name, unit address, monthly rental amount, tenancy start date, tenancy end date, security deposit amount. Return as JSON only, with keys: landlord_name, tenant_name, unit_address, monthly_rental (number), tenancy_start_date (YYYY-MM-DD), tenancy_end_date (YYYY-MM-DD), security_deposit (number). If a field is not found, use null.',
+              text: customPrompt ?? 'Extract the following from this tenancy agreement: landlord name, tenant name, unit address, monthly rental amount, tenancy start date, tenancy end date, security deposit amount. Return as JSON only, with keys: landlord_name, tenant_name, unit_address, monthly_rental (number), tenancy_start_date (YYYY-MM-DD), tenancy_end_date (YYYY-MM-DD), security_deposit (number). If a field is not found, use null.',
             },
           ],
         },

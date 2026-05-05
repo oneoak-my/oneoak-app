@@ -37,6 +37,13 @@ function subtractMonths(dateStr: string, months: number): string {
   return dt.toISOString().split('T')[0]
 }
 
+function subtractDays(dateStr: string, days: number): string {
+  const [y, mo, d] = dateStr.split('-').map(Number)
+  const dt = new Date(y, mo - 1, d)
+  dt.setDate(dt.getDate() - days)
+  return dt.toISOString().split('T')[0]
+}
+
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -57,26 +64,51 @@ function downloadBlob(blob: Blob, filename: string) {
 
 function tenantRenewalWa(r: RenewRec): string {
   const expiry = getExpiry(r)
+  const remindBy = expiry ? subtractMonths(expiry, 2) : null
+  const lister = r.unit?.lister ?? ''
   const msg = [
-    `Hi ${r.tenant_name ?? 'there'} 👋`,
+    `*Tenancy Expiry Reminder — ${r.unit?.unit_number ?? ''}*`,
     ``,
-    `Just a friendly reminder that your tenancy for *${r.unit?.unit_number ?? ''}* is expiring on *${fmtDate(expiry)}*.`,
+    `Hi ${r.tenant_name ?? 'there'}, 😊`,
     ``,
-    `We would love to continue having you as our tenant! 😊 Please let us know if you would like to renew your tenancy.`,
+    `This is a gentle reminder that your tenancy is expiring soon:`,
+    `📍 *Unit:* ${r.unit?.unit_number ?? ''}`,
+    `📅 *Expiry Date:* ${fmtDate(expiry)}`,
     ``,
+    `As per your Tenancy Agreement, a *2-month written notice* is required should you wish to renew or vacate the unit upon expiry.`,
+    ``,
+    `Kindly let us know your intention to *renew or vacate* by *${fmtDate(remindBy)}*.`,
+    ``,
+    `Should you wish to renew, the updated tenancy terms will be shared with you upon confirmation with the Landlord.`,
+    ``,
+    `Please feel free to reach out if you have any questions.`,
     `Thank you! 🙏`,
+    lister,
   ].join('\n')
   return `https://wa.me/?text=${encodeURIComponent(msg)}`
 }
 
 function coAgentRenewalWa(r: RenewRec): string {
   const expiry = getExpiry(r)
+  const remindBy = expiry ? subtractMonths(expiry, 2) : null
+  const coAgentDeadline = remindBy ? subtractDays(remindBy, 7) : null
+  const lister = r.unit?.lister ?? ''
   const msg = [
-    `Hi ${r.co_agent_checkin ?? 'there'} 👋`,
+    `*Tenancy Expiry Reminder — ${r.unit?.unit_number ?? ''}*`,
     ``,
-    `Please note that the tenancy for *${r.tenant_name ?? ''}* at *${r.unit?.unit_number ?? ''}* is expiring on *${fmtDate(expiry)}*.`,
+    `Hi ${r.co_agent_checkin ?? 'there'},`,
     ``,
-    `Kindly follow up with the tenant regarding renewal. Thank you! 🙏`,
+    `Please be informed that the tenancy for the below unit is expiring soon:`,
+    `📍 *Unit:* ${r.unit?.unit_number ?? ''}`,
+    `👤 *Tenant:* ${r.tenant_name ?? ''}`,
+    `📅 *Expiry Date:* ${fmtDate(expiry)}`,
+    ``,
+    `Kindly follow up with the tenant on whether they intend to Renew or Vacate.`,
+    ``,
+    `Please revert to me by *${fmtDate(coAgentDeadline)}*.`,
+    ``,
+    `Thank you! 🙏`,
+    lister,
   ].join('\n')
   return `https://wa.me/?text=${encodeURIComponent(msg)}`
 }
@@ -704,7 +736,7 @@ export default function RenewalPage() {
                   (h) => (
                     <th
                       key={h}
-                      className="px-4 py-2.5 text-left text-[10px] font-semibold text-[#f5f0e8] uppercase tracking-wider whitespace-nowrap"
+                      className={`px-4 py-2.5 text-left text-[10px] font-semibold text-[#f5f0e8] uppercase tracking-wider whitespace-nowrap${h === 'Remind By' ? ' sticky left-0 z-10 bg-[#0e0c08] border-r border-[#332c20]' : ''}`}
                     >
                       {h}
                     </th>
@@ -726,10 +758,10 @@ export default function RenewalPage() {
                 return (
                   <tr
                     key={r.id}
-                    className="border-b border-[#332c20]/40 hover:bg-[#1e1a14] transition-colors"
+                    className="border-b border-[#332c20]/40 hover:bg-[#1e1a14] transition-colors group"
                   >
                     {/* Remind By */}
-                    <td className="px-4 py-3 whitespace-nowrap">
+                    <td className="px-4 py-3 whitespace-nowrap sticky left-0 z-10 bg-[#0e0c08] group-hover:bg-[#1e1a14] border-r border-[#332c20] transition-colors">
                       {remindBy ? (
                         <span className={`text-xs ${remindActive ? 'text-orange-400' : 'text-[#a89d84]'}`}>
                           {fmtDate(remindBy)}

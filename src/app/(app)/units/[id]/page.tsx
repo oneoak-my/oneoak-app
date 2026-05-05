@@ -403,15 +403,19 @@ function AddRecordModal({
     if (!date) { setError('Date is required.'); return }
     setLoading(true)
     setError('')
+    const safeNum = (v: string | number) => {
+      const n = typeof v === 'number' ? v : parseFloat(v)
+      return isNaN(n) ? null : Math.round(n * 100) / 100 || null
+    }
     try {
       await createRecord({
         unit_id: unitId,
         type,
         tenant_name: tenantName.trim() || null,
         date,
-        monthly_rental: rental || null,
-        security_deposit: rental ? secDep : null,
-        utility_deposit: rental ? utilDep : null,
+        monthly_rental: safeNum(rental),
+        security_deposit: rental ? safeNum(secDep) : null,
+        utility_deposit: rental ? safeNum(utilDep) : null,
         notes: notes.trim() || null,
         status: 'active',
         // Check-in fields
@@ -433,12 +437,12 @@ function AddRecordModal({
         tenant_id: type === 'renewal' ? (tenantId.trim() || null) : null,
         unit_full_address: type === 'renewal' ? (unitFullAddress.trim() || null) : null,
         original_ta_date: type === 'renewal' ? (originalTaDate || null) : null,
-        prev_security_deposit: type === 'renewal' ? (parseFloat(prevSecurityDeposit) || null) : null,
-        prev_utility_deposit: type === 'renewal' ? (parseFloat(prevUtilityDeposit) || null) : null,
-        new_security_deposit: type === 'renewal' && depositTopup ? (parseFloat(newSecurityDeposit) || null) : null,
-        new_utility_deposit: type === 'renewal' && depositTopup ? (parseFloat(newUtilityDeposit) || null) : null,
-        security_topup: type === 'renewal' && depositTopup ? (secTopup || null) : null,
-        utility_topup: type === 'renewal' && depositTopup ? (utilTopup || null) : null,
+        prev_security_deposit: type === 'renewal' ? safeNum(prevSecurityDeposit) : null,
+        prev_utility_deposit: type === 'renewal' ? safeNum(prevUtilityDeposit) : null,
+        new_security_deposit: type === 'renewal' && depositTopup ? safeNum(newSecurityDeposit) : null,
+        new_utility_deposit: type === 'renewal' && depositTopup ? safeNum(newUtilityDeposit) : null,
+        security_topup: type === 'renewal' && depositTopup ? safeNum(secTopup) : null,
+        utility_topup: type === 'renewal' && depositTopup ? safeNum(utilTopup) : null,
         renewal_start_date: type === 'renewal' ? (renewalStartDate || null) : null,
         renewal_end_date: type === 'renewal' ? (renewalEndDate || null) : null,
         deposit_topup: type === 'renewal' ? depositTopup : null,
@@ -556,6 +560,7 @@ function AddRecordModal({
             <Input
               label="Monthly Rental (RM)"
               type="number"
+              step="0.01"
               value={monthlyRental}
               onChange={(e) => setMonthlyRental(e.target.value)}
               placeholder="0.00"
@@ -654,7 +659,7 @@ function AddRecordModal({
               <Input label="Previous Tenancy Expiry" type="date" value={tenancyEnd} onChange={(e) => setTenancyEnd(e.target.value)} />
             </div>
             <p className="text-xs font-semibold text-[#7c6f54] uppercase tracking-wider pt-1">Renewal Terms</p>
-            <Input label="New Monthly Rental (RM)" type="number" value={monthlyRental} onChange={(e) => setMonthlyRental(e.target.value)} placeholder="0.00" prefix="RM" />
+            <Input label="New Monthly Rental (RM)" type="number" step="0.01" value={monthlyRental} onChange={(e) => setMonthlyRental(e.target.value)} placeholder="0.00" prefix="RM" />
             <div>
               <p className="text-xs font-medium text-[#a89d84] mb-1.5">Renewal Length</p>
               <div className="grid grid-cols-3 gap-2">
@@ -702,12 +707,12 @@ function AddRecordModal({
             </div>
             <p className="text-xs font-semibold text-[#7c6f54] uppercase tracking-wider pt-1">Deposits</p>
             <div className="grid grid-cols-2 gap-3">
-              <Input label="Prev Security Deposit (RM)" type="number" value={prevSecurityDeposit} onChange={(e) => setPrevSecurityDeposit(e.target.value)} />
-              <Input label="Prev Utility Deposit (RM)" type="number" value={prevUtilityDeposit} onChange={(e) => setPrevUtilityDeposit(e.target.value)} />
+              <Input label="Prev Security Deposit (RM)" type="number" step="0.01" value={prevSecurityDeposit} onChange={(e) => setPrevSecurityDeposit(e.target.value)} prefix="RM" />
+              <Input label="Prev Utility Deposit (RM)" type="number" step="0.01" value={prevUtilityDeposit} onChange={(e) => setPrevUtilityDeposit(e.target.value)} prefix="RM" />
               {depositTopup && (
                 <>
-                  <Input label="New Security Deposit (RM)" type="number" value={newSecurityDeposit} onChange={(e) => setNewSecurityDeposit(e.target.value)} />
-                  <Input label="New Utility Deposit (RM)" type="number" value={newUtilityDeposit} onChange={(e) => setNewUtilityDeposit(e.target.value)} />
+                  <Input label="New Security Deposit (RM)" type="number" step="0.01" value={newSecurityDeposit} onChange={(e) => setNewSecurityDeposit(e.target.value)} prefix="RM" />
+                  <Input label="New Utility Deposit (RM)" type="number" step="0.01" value={newUtilityDeposit} onChange={(e) => setNewUtilityDeposit(e.target.value)} prefix="RM" />
                 </>
               )}
             </div>
