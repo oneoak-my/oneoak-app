@@ -12,6 +12,7 @@ import {
   getServiceProviders, getServiceDescriptions, uploadInvoice, createServiceProvider,
   markReportGenerated, extractError,
 } from '@/lib/api'
+import { supabase } from '@/lib/supabase'
 import type { PropertyRecord, Service, ServiceProvider, ServiceDescription, RecordType, PaymentBy } from '@/lib/types'
 import { PAYMENT_STATUS_LABELS, UTILITY_OPTIONS, PAYMENT_BY_CHECKOUT, PAYMENT_BY_OTHER, PAYMENT_BY_COLORS } from '@/lib/types'
 import {
@@ -833,7 +834,12 @@ export default function RecordDetailPage() {
       <NotesSection record={record} />
 
       {/* Services Status (checkout only) */}
-      {record.type === 'checkout' && <ServicesStatusSection record={record} onSaved={load} />}
+      {record.type === 'checkout' && (
+        <ServicesStatusSection
+          record={record}
+          onSaved={(field, value) => setRecord((prev) => prev ? { ...prev, [field]: value } : prev)}
+        />
+      )}
 
       {/* Tasks (non-renewal only) */}
       {record.type !== 'renewal' && <TaskSection record={record} />}
@@ -1713,21 +1719,27 @@ const SERVICE_STATUS_OPTIONS = [
 const statusSelectCls =
   'w-full rounded-lg bg-[#262018] border border-[#332c20] text-xs text-[#a89d84] px-3 py-2.5 focus:outline-none focus:border-gold-500/60 appearance-none cursor-pointer'
 
-function ServicesStatusSection({ record, onSaved }: { record: PropertyRecord; onSaved: () => void }) {
+function ServicesStatusSection({ record, onSaved }: { record: PropertyRecord; onSaved: (field: string, value: string) => void }) {
   const [cleaning, setCleaning] = useState(record.cleaning_status ?? 'TBC')
   const [steam, setSteam]       = useState(record.steam_cleaning_status ?? 'TBC')
   const [aircond, setAircond]   = useState(record.aircond_status ?? 'TBC')
   const [saved, setSaved]       = useState(false)
+  const [error, setError]       = useState<string | null>(null)
 
-  async function save(field: string, value: string) {
-    try {
-      await updateRecord(record.id, { [field]: value } as Partial<PropertyRecord>)
-      setSaved(true)
-      onSaved()
-      setTimeout(() => setSaved(false), 2000)
-    } catch (e) {
-      console.error(e)
+  async function save(field: string, value: string, setter: (v: string) => void) {
+    setError(null)
+    const { error: err } = await supabase
+      .from('records')
+      .update({ [field]: value, updated_at: new Date().toISOString() })
+      .eq('id', record.id)
+    if (err) {
+      setError('Failed to save — ' + err.message)
+      return
     }
+    setter(value)
+    onSaved(field, value)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
   }
 
   return (
@@ -1738,6 +1750,7 @@ function ServicesStatusSection({ record, onSaved }: { record: PropertyRecord; on
           Saved ✓
         </span>
       </div>
+      {error && <p className="text-xs text-red-400 mb-2">{error}</p>}
       <Card>
         <div className="space-y-4">
           {[
@@ -1750,7 +1763,7 @@ function ServicesStatusSection({ record, onSaved }: { record: PropertyRecord; on
               <div className="relative">
                 <select
                   value={value}
-                  onChange={(e) => { setter(e.target.value); save(field, e.target.value) }}
+                  onChange={(e) => save(field, e.target.value, setter)}
                   className={statusSelectCls}
                 >
                   {SERVICE_STATUS_OPTIONS.map((o) => (
