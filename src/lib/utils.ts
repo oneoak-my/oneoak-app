@@ -42,17 +42,22 @@ export function calcRefund(record: PropertyRecord): number {
 // ── Service ordering ──────────────────────────────────────────────────────────
 
 function servicePriority(s: Service): number {
-  const d = s.description.toLowerCase()
-  if (d === 'outstanding electricity bill') return 0
-  if (d === 'outstanding water bill') return 1
-  if (d === 'outstanding indah water') return 2
-  if (d.includes('clean') || d.includes('steam')) return 3
-  if (d.includes('air cond')) return 4
-  return 5
+  const d = (s.description ?? '').toLowerCase()
+  if (d.includes('electricity')) return 1
+  if (d.includes('water bill') || d === 'outstanding water bill') return 2
+  if (d.includes('indah water')) return 3
+  if (d.includes('clean') || d.includes('steam')) return 4
+  if (d.includes('air cond')) return 5
+  return 6
 }
 
-function sortByPriority(services: Service[]): Service[] {
-  return [...services].sort((a, b) => servicePriority(a) - servicePriority(b))
+function sortServices(services: Service[]): Service[] {
+  return [...services].sort((a, b) => {
+    const pa = servicePriority(a)
+    const pb = servicePriority(b)
+    if (pa !== pb) return pa - pb
+    return (a.description ?? '').localeCompare(b.description ?? '')
+  })
 }
 
 function serviceStatusDisplay(status: string | null | undefined): string {
@@ -117,7 +122,7 @@ function providerBlock(g: ProviderGroup): string[] {
 
 export function generateMoveInReport(record: PropertyRecord): string {
   const unit = record.unit
-  const services = sortByPriority(record.services ?? [])
+  const services = sortServices(record.services ?? [])
 
   const lines: string[] = [
     `🏠 *MOVE-IN REPORT*`,
@@ -175,10 +180,10 @@ const ROMAN_NUMERALS = [
 
 export function generateMoveOutReport(record: PropertyRecord): string {
   const unit = record.unit
-  const allServices = record.services ?? []
+  const allServices = sortServices(record.services ?? [])
 
   // Services that count toward deposit deduction
-  const deductServices = sortByPriority(
+  const deductServices = sortServices(
     allServices.filter(
       (s) =>
         s.payment_by === 'Deduct from Deposit' ||
@@ -258,7 +263,7 @@ export function generateMoveOutReport(record: PropertyRecord): string {
   }
 
   // Attention to Owner — ALL Deduct from Deposit and Pay by Owner services
-  const ownerServices = sortByPriority(
+  const ownerServices = sortServices(
     allServices.filter(
       (s) => s.payment_by === 'Deduct from Deposit' || s.payment_by === 'Pay by Owner',
     ),
@@ -301,7 +306,7 @@ export function generateMoveOutReport(record: PropertyRecord): string {
   }
 
   // Subsidized section — Deduct from Deposit + Pay by One Oak
-  const subsidizedServices = sortByPriority(
+  const subsidizedServices = sortServices(
     allServices.filter((s) => s.payment_by === 'Deduct from Deposit + Pay by One Oak'),
   )
 

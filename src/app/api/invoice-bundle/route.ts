@@ -92,9 +92,24 @@ export async function GET(request: Request) {
 
     const allServices = (servicesData ?? []) as ServiceRow[]
 
-    // Cover shows all services; invoice pages only use services with files
-    const services = allServices
-    const servicesWithInvoices = allServices.filter(
+    const getPriority = (desc: string): number => {
+      const d = (desc ?? '').toLowerCase()
+      if (d.includes('electricity')) return 1
+      if (d.includes('water bill') || d === 'outstanding water bill') return 2
+      if (d.includes('indah water')) return 3
+      if (d.includes('clean') || d.includes('steam')) return 4
+      if (d.includes('air cond')) return 5
+      return 6
+    }
+
+    // Cover shows all services sorted by priority; invoice pages only use services with files
+    const services = [...allServices].sort((a, b) => {
+      const pa = getPriority(a.description ?? '')
+      const pb = getPriority(b.description ?? '')
+      if (pa !== pb) return pa - pb
+      return (a.description ?? '').localeCompare(b.description ?? '')
+    })
+    const servicesWithInvoices = services.filter(
       (s) => s.invoice_url || s.invoice_url_2 || s.invoice_url_3,
     )
 
