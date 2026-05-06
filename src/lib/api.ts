@@ -198,7 +198,6 @@ async function swapUnitTag(unitId: string, remove: UnitStatusTag, add: UnitStatu
 // ── Default task creation ────────────────────────────────
 
 export async function createDefaultTasks(recordId: string, recordType: RecordType): Promise<void> {
-  if (recordType === 'renewal') return
   const templates = DEFAULT_TASK_TEMPLATES[recordType]
   if (!templates?.length) return
 

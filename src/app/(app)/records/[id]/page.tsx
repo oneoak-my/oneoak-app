@@ -39,9 +39,17 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 function detectIdType(id: string | null | undefined): string {
-  if (!id) return 'NRIC/Passport No'
-  const cleaned = id.replace(/[-\s]/g, '')
-  return /^\d+$/.test(cleaned) ? 'NRIC No' : 'Passport No'
+  if (!id) return 'ID No'
+  const trimmed = id.trim()
+  if (/\d+-[A-Z]$/i.test(trimmed)) return 'Company No'
+  if (/^\d[\d-]*\d$/.test(trimmed)) return 'NRIC No'
+  return 'Passport No'
+}
+
+function ordinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd']
+  const v = n % 100
+  return n + (s[(v - 20) % 10] || s[v] || s[0])
 }
 
 function computeRenewalLength(start: string | null, end: string | null, custom?: string | null): string {
@@ -59,7 +67,9 @@ function computeRenewalLength(start: string | null, end: string | null, custom?:
 
 function fmtDateLetter(s: string | null | undefined): string {
   if (!s) return '—'
-  return new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+  const d = new Date(s + 'T00:00:00')
+  const month = d.toLocaleDateString('en-GB', { month: 'long' }).toUpperCase()
+  return `${ordinal(d.getDate())} ${month} ${d.getFullYear()}`
 }
 
 function fmtRMLetter(n: number | null | undefined): string {
@@ -248,12 +258,12 @@ async function downloadRenewalPdf(record: PropertyRecord): Promise<void> {
   page.drawText('Signature', { x: col2X, y, size: 9, font: regular, color: mid })
   y -= 18
 
-  page.drawText(`Name: ${record.tenant_name ?? '—'}`, { x: col1X, y, size: 10, font: regular, color: ink })
-  page.drawText(`Name: ${record.landlord_name ?? '—'}`, { x: col2X, y, size: 10, font: regular, color: ink })
+  page.drawText(`Name: ${record.tenant_name ?? '—'}`, { x: col1X, y, size: 10, font: bold, color: ink })
+  page.drawText(`Name: ${record.landlord_name ?? '—'}`, { x: col2X, y, size: 10, font: bold, color: ink })
   y -= 14
 
-  page.drawText(`${tenantIdType}: ${record.tenant_id ?? '—'}`, { x: col1X, y, size: 10, font: regular, color: ink })
-  page.drawText(`${landlordIdType}: ${record.landlord_id ?? '—'}`, { x: col2X, y, size: 10, font: regular, color: ink })
+  page.drawText(`${tenantIdType}: ${record.tenant_id ?? '—'}`, { x: col1X, y, size: 10, font: bold, color: ink })
+  page.drawText(`${landlordIdType}: ${record.landlord_id ?? '—'}`, { x: col2X, y, size: 10, font: bold, color: ink })
 
   const bytes = await doc.save()
   const blob = new Blob([bytes as unknown as BlobPart], { type: 'application/pdf' })
@@ -409,12 +419,12 @@ async function downloadRenewalWord(record: PropertyRecord): Promise<void> {
               new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Signature', size: 20, color: '78716C' })] })] }),
             ]}),
             new TableRow({ children: [
-              new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `Name: ${record.tenant_name ?? '—'}`, size: 20 })] })] }),
-              new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `Name: ${record.landlord_name ?? '—'}`, size: 20 })] })] }),
+              new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `Name: ${record.tenant_name ?? '—'}`, bold: true, size: 20 })] })] }),
+              new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `Name: ${record.landlord_name ?? '—'}`, bold: true, size: 20 })] })] }),
             ]}),
             new TableRow({ children: [
-              new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${tenantIdType}: ${record.tenant_id ?? '—'}`, size: 20 })] })] }),
-              new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${landlordIdType}: ${record.landlord_id ?? '—'}`, size: 20 })] })] }),
+              new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${tenantIdType}: ${record.tenant_id ?? '—'}`, bold: true, size: 20 })] })] }),
+              new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `${landlordIdType}: ${record.landlord_id ?? '—'}`, bold: true, size: 20 })] })] }),
             ]}),
           ],
         }),
@@ -482,6 +492,7 @@ export default function RecordDetailPage() {
   const [providers, setProviders] = useState<ServiceProvider[]>([])
   const [descriptions, setDescriptions] = useState<ServiceDescription[]>([])
   const [showAddService, setShowAddService] = useState(false)
+  const [savedToast, setSavedToast] = useState(false)
   const [showEditRecord, setShowEditRecord] = useState(false)
   const [editingService, setEditingService] = useState<Service | null>(null)
   const [showReport, setShowReport] = useState(false)
@@ -584,6 +595,12 @@ export default function RecordDetailPage() {
 
   return (
     <div className="px-4 py-5 space-y-5">
+      {/* Saved toast */}
+      {savedToast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-emerald-500/90 text-white text-sm font-medium px-5 py-2.5 rounded-xl shadow-lg">
+          Saved!
+        </div>
+      )}
       {/* Nav */}
       <div className="flex items-center justify-between">
         <button
@@ -913,7 +930,15 @@ export default function RecordDetailPage() {
         record={record}
         open={showEditRecord}
         onClose={() => setShowEditRecord(false)}
-        onSaved={() => { setShowEditRecord(false); load() }}
+        onSaved={() => {
+          setShowEditRecord(false)
+          if (record.type === 'renewal') {
+            setSavedToast(true)
+            setTimeout(() => router.push(`/units/${record.unit_id}`), 1000)
+          } else {
+            load()
+          }
+        }}
       />
 
       {/* Report modal */}
@@ -1408,6 +1433,9 @@ function EditRecordModal({
   const [renewalEnd, setRenewalEnd] = useState(record.renewal_end_date ?? '')
   const [prevSecurity, setPrevSecurity] = useState(String(record.prev_security_deposit ?? ''))
   const [prevUtility, setPrevUtility] = useState(String(record.prev_utility_deposit ?? ''))
+  const [newSecurity, setNewSecurity] = useState(String(record.new_security_deposit ?? ''))
+  const [newUtility, setNewUtility] = useState(String(record.new_utility_deposit ?? ''))
+  const [depositTopup, setDepositTopup] = useState(record.deposit_topup ?? false)
   const [autoFilledFields, setAutoFilledFields] = useState<Set<string>>(new Set())
   const [reading, setReading] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -1478,6 +1506,10 @@ Use YYYY-MM-DD format for all dates. Use null for any field not found.`
     setError('')
     try {
       const safeNum = (v: string) => v ? Math.round(parseFloat(v) * 100) / 100 || null : null
+      const prevSec = parseFloat(prevSecurity) || 0
+      const prevUtil = parseFloat(prevUtility) || 0
+      const newSec = parseFloat(newSecurity) || 0
+      const newUtil = parseFloat(newUtility) || 0
       const renewalFields: Partial<PropertyRecord> = record.type === 'renewal' ? {
         landlord_name: landlordName.trim() || null,
         landlord_id: landlordId.trim() || null,
@@ -1486,8 +1518,14 @@ Use YYYY-MM-DD format for all dates. Use null for any field not found.`
         original_ta_date: originalTaDate || null,
         renewal_start_date: renewalStart || null,
         renewal_end_date: renewalEnd || null,
+        monthly_rental: safeNum(monthlyRental),
         prev_security_deposit: safeNum(prevSecurity),
         prev_utility_deposit: safeNum(prevUtility),
+        new_security_deposit: safeNum(newSecurity),
+        new_utility_deposit: safeNum(newUtility),
+        security_topup: depositTopup ? (newSec - prevSec) : null,
+        utility_topup: depositTopup ? (newUtil - prevUtil) : null,
+        deposit_topup: depositTopup,
       } : {}
       await updateRecord(record.id, {
         tenant_name: tenantName.trim() || null,
@@ -1551,13 +1589,13 @@ Use YYYY-MM-DD format for all dates. Use null for any field not found.`
         {record.type === 'checkin' && (
           <Input label="Move-in Date" type="date" value={moveInDate} onChange={(e) => setMoveInDate(e.target.value)} />
         )}
-        {record.type !== 'maintenance' && (
+        {record.type !== 'maintenance' && record.type !== 'renewal' && (
           <div className="grid grid-cols-2 gap-3">
             <Input label="Tenancy Start" type="date" value={tenancyStart} onChange={(e) => setTenancyStart(e.target.value)} />
             <Input label="Tenancy End" type="date" value={tenancyEnd} onChange={(e) => setTenancyEnd(e.target.value)} />
           </div>
         )}
-        {record.type !== 'maintenance' && (
+        {record.type !== 'maintenance' && record.type !== 'renewal' && (
           <>
             <div className="flex items-end gap-2">
               <div className="flex-1">
@@ -1665,9 +1703,41 @@ Use YYYY-MM-DD format for all dates. Use null for any field not found.`
                 className={autoFilledFields.has('renewal_end_date') ? 'ring-1 ring-emerald-500/40' : ''}
               />
             </div>
+            {/* New monthly rental */}
+            <Input
+              label="New Monthly Rental (RM)"
+              type="number"
+              step="0.01"
+              value={monthlyRental}
+              onChange={(e) => {
+                const v = e.target.value
+                setMonthlyRental(v)
+                const r = parseFloat(v) || 0
+                if (r > 0) {
+                  setNewSecurity(String(r * 2))
+                  setNewUtility(String(r * 0.5))
+                }
+              }}
+              prefix="RM"
+              className={autoFilledFields.has('monthly_rental') ? 'ring-1 ring-emerald-500/40' : ''}
+            />
+            {/* Deposit top-up toggle */}
+            <div>
+              <p className="text-xs font-semibold text-[#7c6f54] uppercase tracking-wider mb-2">Deposit Top-up Required?</p>
+              <div className="flex gap-2">
+                {([false, true] as const).map((v) => (
+                  <button key={String(v)} type="button" onClick={() => setDepositTopup(v)}
+                    className={`flex-1 py-2 rounded-xl text-xs font-medium border transition-colors ${depositTopup === v ? 'bg-gold-500/20 border-gold-500/50 text-gold-300' : 'bg-[#262018] border-[#332c20] text-[#7c6f54]'}`}>
+                    {v ? 'Yes' : 'No'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Previous Tenancy */}
+            <p className="text-xs font-semibold text-[#7c6f54] uppercase tracking-wider">Previous Tenancy</p>
             <div className="grid grid-cols-2 gap-3">
               <Input
-                label="Prev Security Deposit (RM)"
+                label="Previous Security Deposit (RM)"
                 type="number"
                 step="0.01"
                 value={prevSecurity}
@@ -1676,7 +1746,7 @@ Use YYYY-MM-DD format for all dates. Use null for any field not found.`
                 className={autoFilledFields.has('security_deposit') ? 'ring-1 ring-emerald-500/40' : ''}
               />
               <Input
-                label="Prev Utility Deposit (RM)"
+                label="Previous Utility Deposit (RM)"
                 type="number"
                 step="0.01"
                 value={prevUtility}
@@ -1685,6 +1755,64 @@ Use YYYY-MM-DD format for all dates. Use null for any field not found.`
                 className={autoFilledFields.has('utility_deposit') ? 'ring-1 ring-emerald-500/40' : ''}
               />
             </div>
+            {(prevSecurity || prevUtility) && (
+              <div className="flex justify-between text-xs px-1">
+                <span className="text-[#7c6f54]">Previous Total</span>
+                <span className="text-[#a89d84] font-medium">RM {((parseFloat(prevSecurity) || 0) + (parseFloat(prevUtility) || 0)).toFixed(2)}</span>
+              </div>
+            )}
+            {/* New Tenancy */}
+            <p className="text-xs font-semibold text-[#7c6f54] uppercase tracking-wider">New Tenancy</p>
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="New Security Deposit (RM)"
+                type="number"
+                step="0.01"
+                value={newSecurity}
+                onChange={(e) => setNewSecurity(e.target.value)}
+                prefix="RM"
+              />
+              <Input
+                label="New Utility Deposit (RM)"
+                type="number"
+                step="0.01"
+                value={newUtility}
+                onChange={(e) => setNewUtility(e.target.value)}
+                prefix="RM"
+              />
+            </div>
+            {(newSecurity || newUtility) && (
+              <div className="flex justify-between text-xs px-1">
+                <span className="text-[#7c6f54]">New Total</span>
+                <span className="text-[#a89d84] font-medium">RM {((parseFloat(newSecurity) || 0) + (parseFloat(newUtility) || 0)).toFixed(2)}</span>
+              </div>
+            )}
+            {/* Top-up */}
+            {depositTopup && (
+              <div className="rounded-xl bg-[#262018] border border-[#332c20] p-3 space-y-1.5">
+                <p className="text-xs text-[#7c6f54] font-medium uppercase tracking-wider">Top-Up</p>
+                {(() => {
+                  const st = (parseFloat(newSecurity) || 0) - (parseFloat(prevSecurity) || 0)
+                  const ut = (parseFloat(newUtility) || 0) - (parseFloat(prevUtility) || 0)
+                  return (
+                    <>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-[#a89d84]">Security Top-up</span>
+                        <span className={`font-medium ${st > 0 ? 'text-gold-400' : 'text-[#7c6f54]'}`}>RM {Math.max(0, st).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-[#a89d84]">Utility Top-up</span>
+                        <span className={`font-medium ${ut > 0 ? 'text-gold-400' : 'text-[#7c6f54]'}`}>RM {Math.max(0, ut).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs border-t border-[#332c20] pt-1.5 mt-1">
+                        <span className="text-[#f5f0e8] font-medium">Total Top-up</span>
+                        <span className="text-gold-300 font-semibold">RM {(Math.max(0, st) + Math.max(0, ut)).toFixed(2)}</span>
+                      </div>
+                    </>
+                  )
+                })()}
+              </div>
+            )}
           </>
         )}
         <Select
@@ -1700,7 +1828,7 @@ Use YYYY-MM-DD format for all dates. Use null for any field not found.`
         {error && <p className="text-sm text-red-400">{error}</p>}
         <div className="sticky bottom-0 bg-[#1e1a14] -mx-5 px-5 pt-3 pb-5 border-t border-[#332c20] flex gap-3 mt-2">
           <Button variant="secondary" type="button" fullWidth onClick={onClose}>Cancel</Button>
-          <Button variant="primary" type="submit" fullWidth loading={loading}>Save Changes</Button>
+          <Button variant="primary" type="submit" fullWidth loading={loading}>{record.type === 'renewal' ? 'Save Renewal' : 'Save Changes'}</Button>
         </div>
       </form>
     </Modal>

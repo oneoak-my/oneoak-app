@@ -289,7 +289,7 @@ function RecordCard({ record, onClick }: { record: PropertyRecord; onClick: () =
           <div className={`p-2 rounded-xl shrink-0 ${
             record.type === 'checkin' ? 'bg-blue-500/15 text-blue-400'
             : record.type === 'checkout' ? 'bg-red-500/15 text-red-400'
-            : record.type === 'renewal' ? 'bg-gold-500/15 text-gold-400'
+            : record.type === 'renewal' ? 'bg-violet-500/15 text-violet-400'
             : 'bg-orange-500/15 text-orange-400'
           }`}>
             {RECORD_TYPE_ICONS[record.type]}
@@ -659,7 +659,23 @@ function AddRecordModal({
               <Input label="Previous Tenancy Expiry" type="date" value={tenancyEnd} onChange={(e) => setTenancyEnd(e.target.value)} />
             </div>
             <p className="text-xs font-semibold text-[#7c6f54] uppercase tracking-wider pt-1">Renewal Terms</p>
-            <Input label="New Monthly Rental (RM)" type="number" step="0.01" value={monthlyRental} onChange={(e) => setMonthlyRental(e.target.value)} placeholder="0.00" prefix="RM" />
+            <Input
+              label="New Monthly Rental (RM)"
+              type="number"
+              step="0.01"
+              value={monthlyRental}
+              onChange={(e) => {
+                const v = e.target.value
+                setMonthlyRental(v)
+                const r = parseFloat(v) || 0
+                if (r > 0) {
+                  setNewSecurityDeposit(String(r * 2))
+                  setNewUtilityDeposit(String(r * 0.5))
+                }
+              }}
+              placeholder="0.00"
+              prefix="RM"
+            />
             <div>
               <p className="text-xs font-medium text-[#a89d84] mb-1.5">Renewal Length</p>
               <div className="grid grid-cols-3 gap-2">
@@ -705,20 +721,34 @@ function AddRecordModal({
                 ))}
               </div>
             </div>
-            <p className="text-xs font-semibold text-[#7c6f54] uppercase tracking-wider pt-1">Deposits</p>
+            {/* Previous Tenancy */}
+            <p className="text-xs font-semibold text-[#7c6f54] uppercase tracking-wider pt-1">Previous Tenancy</p>
             <div className="grid grid-cols-2 gap-3">
-              <Input label="Prev Security Deposit (RM)" type="number" step="0.01" value={prevSecurityDeposit} onChange={(e) => setPrevSecurityDeposit(e.target.value)} prefix="RM" />
-              <Input label="Prev Utility Deposit (RM)" type="number" step="0.01" value={prevUtilityDeposit} onChange={(e) => setPrevUtilityDeposit(e.target.value)} prefix="RM" />
-              {depositTopup && (
-                <>
-                  <Input label="New Security Deposit (RM)" type="number" step="0.01" value={newSecurityDeposit} onChange={(e) => setNewSecurityDeposit(e.target.value)} prefix="RM" />
-                  <Input label="New Utility Deposit (RM)" type="number" step="0.01" value={newUtilityDeposit} onChange={(e) => setNewUtilityDeposit(e.target.value)} prefix="RM" />
-                </>
-              )}
+              <Input label="Previous Security Deposit (RM)" type="number" step="0.01" value={prevSecurityDeposit} onChange={(e) => setPrevSecurityDeposit(e.target.value)} prefix="RM" />
+              <Input label="Previous Utility Deposit (RM)" type="number" step="0.01" value={prevUtilityDeposit} onChange={(e) => setPrevUtilityDeposit(e.target.value)} prefix="RM" />
             </div>
-            {depositTopup && (prevSecurityDeposit || newSecurityDeposit || prevUtilityDeposit || newUtilityDeposit) && (
+            {(prevSecurityDeposit || prevUtilityDeposit) && (
+              <div className="flex justify-between text-xs px-1">
+                <span className="text-[#7c6f54]">Previous Total</span>
+                <span className="text-[#a89d84] font-medium">RM {((parseFloat(prevSecurityDeposit) || 0) + (parseFloat(prevUtilityDeposit) || 0)).toFixed(2)}</span>
+              </div>
+            )}
+            {/* New Tenancy */}
+            <p className="text-xs font-semibold text-[#7c6f54] uppercase tracking-wider pt-1">New Tenancy</p>
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="New Security Deposit (RM)" type="number" step="0.01" value={newSecurityDeposit} onChange={(e) => setNewSecurityDeposit(e.target.value)} prefix="RM" />
+              <Input label="New Utility Deposit (RM)" type="number" step="0.01" value={newUtilityDeposit} onChange={(e) => setNewUtilityDeposit(e.target.value)} prefix="RM" />
+            </div>
+            {(newSecurityDeposit || newUtilityDeposit) && (
+              <div className="flex justify-between text-xs px-1">
+                <span className="text-[#7c6f54]">New Total</span>
+                <span className="text-[#a89d84] font-medium">RM {((parseFloat(newSecurityDeposit) || 0) + (parseFloat(newUtilityDeposit) || 0)).toFixed(2)}</span>
+              </div>
+            )}
+            {/* Top-up (only if deposit_topup = true) */}
+            {depositTopup && (
               <div className="rounded-xl bg-[#262018] border border-[#332c20] p-3 space-y-1.5">
-                <p className="text-xs text-[#7c6f54] font-medium">Top-up Summary</p>
+                <p className="text-xs text-[#7c6f54] font-medium uppercase tracking-wider">Top-Up</p>
                 <div className="flex justify-between text-xs">
                   <span className="text-[#a89d84]">Security Top-up</span>
                   <span className={`font-medium ${secTopup > 0 ? 'text-gold-400' : 'text-[#7c6f54]'}`}>RM {Math.max(0, secTopup).toFixed(2)}</span>

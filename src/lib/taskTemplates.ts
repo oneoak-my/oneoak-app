@@ -28,7 +28,12 @@ export const DEFAULT_TASK_TEMPLATES: Record<RecordType, TaskTemplate[]> = {
     { category: 'default', title: 'Report to Management',                         is_optional: false, sort_order: 1 },
     { category: 'default', title: 'Schedule Appointment with Contractor/Tenant',   is_optional: false, sort_order: 2 },
   ],
-  renewal: [],
+  renewal: [
+    { category: 'default', title: 'Renewal Letter Drafted',            is_optional: false, sort_order: 1 },
+    { category: 'default', title: 'Renewal Letter Sent',               is_optional: false, sort_order: 2 },
+    { category: 'default', title: 'Renewal Letter Signed & Confirmed', is_optional: false, sort_order: 3 },
+    { category: 'default', title: 'Renewal Submitted to KW Central',   is_optional: false, sort_order: 4 },
+  ],
 }
 
 export interface OptionalTaskList {

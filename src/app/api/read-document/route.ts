@@ -15,12 +15,36 @@ export async function POST(request: Request) {
     const contentBlock = isImage
       ? ({
           type: 'image' as const,
-          source: { type: 'base64' as const, media_type: mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp', data: base64 },
+          source: {
+            type: 'base64' as const,
+            media_type: mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+            data: base64,
+          },
         })
       : ({
           type: 'document' as const,
-          source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: base64 },
+          source: {
+            type: 'base64' as const,
+            media_type: 'application/pdf' as const,
+            data: base64,
+          },
         })
+
+    const defaultPrompt = `Extract the following from this tenancy agreement document. Return ONLY a JSON object with no other text:
+{
+  "landlord_name": "string or null",
+  "landlord_id": "string (NRIC/passport/company no) or null",
+  "tenant_name": "string or null",
+  "tenant_id": "string (NRIC/passport/company no) or null",
+  "unit_full_address": "string or null",
+  "original_ta_date": "YYYY-MM-DD or null",
+  "monthly_rental": "number or null",
+  "security_deposit": "number or null",
+  "utility_deposit": "number or null",
+  "tenancy_start_date": "YYYY-MM-DD or null",
+  "tenancy_end_date": "YYYY-MM-DD or null"
+}
+If any field is not found, use null.`
 
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
@@ -30,25 +54,43 @@ export async function POST(request: Request) {
           role: 'user',
           content: [
             contentBlock,
-            {
-              type: 'text',
-              text: customPrompt ?? 'Extract the following from this tenancy agreement: landlord name, tenant name, unit address, monthly rental amount, tenancy start date, tenancy end date, security deposit amount. Return as JSON only, with keys: landlord_name, tenant_name, unit_address, monthly_rental (number), tenancy_start_date (YYYY-MM-DD), tenancy_end_date (YYYY-MM-DD), security_deposit (number). If a field is not found, use null.',
-            },
+            { type: 'text', text: customPrompt ?? defaultPrompt },
           ],
         },
       ],
     })
 
     const text = response.content[0]?.type === 'text' ? response.content[0].text : ''
-    const jsonMatch = text.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) {
-      return NextResponse.json({ error: 'Could not extract JSON from response' }, { status: 422 })
+
+    // Handle JSON in code fences or bare JSON object
+    const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/)
+    const bareMatch = text.match(/(\{[\s\S]*\})/)
+    const jsonStr = fenceMatch?.[1] ?? bareMatch?.[1] ?? null
+
+    if (!jsonStr) {
+      return NextResponse.json(
+        { error: 'Model did not return valid JSON', raw: text.slice(0, 300) },
+        { status: 422 },
+      )
     }
 
-    const extracted = JSON.parse(jsonMatch[0])
+    let extracted: unknown
+    try {
+      extracted = JSON.parse(jsonStr.trim())
+    } catch {
+      return NextResponse.json(
+        { error: 'Failed to parse JSON from model response', raw: jsonStr.slice(0, 300) },
+        { status: 422 },
+      )
+    }
+
     return NextResponse.json(extracted)
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
     console.error('read-document error:', err)
-    return NextResponse.json({ error: 'Failed to read document' }, { status: 500 })
+    return NextResponse.json(
+      { error: `Failed to read document: ${message}` },
+      { status: 500 },
+    )
   }
 }
