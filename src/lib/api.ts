@@ -29,7 +29,7 @@ export async function testConnection(): Promise<{ ok: boolean; error?: string }>
 export async function getUnits(): Promise<Unit[]> {
   const { data, error } = await supabase
     .from('units')
-    .select('*, records(id, type, tenant_name, date, status, record_status, monthly_rental, is_report_generated, move_in_date)')
+    .select('*, records(id, type, record_status, tenant_name, status, monthly_rental, updated_at, tasks(id, status, title))')
     .order('updated_at', { ascending: false })
   if (error) throw error
   return data ?? []

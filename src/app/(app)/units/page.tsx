@@ -8,11 +8,41 @@ import type { Unit, UnitStatusTag } from '@/lib/types'
 import { BUILDINGS, LISTER_OPTIONS, ALL_UNIT_TAGS, UNIT_TAG_STYLES } from '@/lib/types'
 import { UnitTagBadges } from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
-import Card from '@/components/ui/Card'
 import Modal from '@/components/ui/Modal'
 import Input, { Select } from '@/components/ui/Input'
 import EmptyState from '@/components/ui/EmptyState'
 import { formatCurrency } from '@/lib/utils'
+import type { PropertyRecord } from '@/lib/types'
+
+const RECORD_TYPE_BADGE: Record<string, string> = {
+  checkin:     'bg-blue-500/20 text-blue-300',
+  checkout:    'bg-orange-500/20 text-orange-300',
+  maintenance: 'bg-purple-500/20 text-purple-300',
+  renewal:     'bg-violet-500/20 text-violet-300',
+}
+
+const RECORD_TYPE_SHORT: Record<string, string> = {
+  checkin:     'Check-in',
+  checkout:    'Check-out',
+  maintenance: 'Maintenance',
+  renewal:     'Renewal',
+}
+
+const PAYMENT_PILL_STYLE: Record<string, string> = {
+  'Invoice Sent':   'bg-[#FCEBEB] text-[#A32D2D]',
+  'Partially Paid': 'bg-[#FAEEDA] text-[#854F0B]',
+  'Fully Paid':     'bg-[#EAF3DE] text-[#3B6D11]',
+}
+
+function getPaymentStatus(tasks: { title: string; status: string }[]): string | null {
+  return tasks.find(t => t.title === 'Payment Status')?.status ?? null
+}
+
+function taskCountColor(done: number, total: number): string {
+  if (total === 0 || done === total) return 'text-emerald-400'
+  if (done / total > 0.5) return 'text-orange-400'
+  return 'text-red-400'
+}
 
 const BUILDING_FILTER = ['All', ...BUILDINGS]
 
@@ -157,14 +187,35 @@ export default function UnitsPage() {
 function UnitCard({ unit, onClick }: { unit: Unit; onClick: () => void }) {
   const activeRecord = (unit.records ?? []).find((r) => r.status === 'active')
   const tags = unit.status ?? []
+  const allRecords = unit.records ?? []
+
+  const outstanding = allRecords
+    .filter(r => (r.tasks ?? []).some(t => t.status !== 'Completed' && t.status !== 'Fully Paid'))
+    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+
+  const shown = outstanding.slice(0, 2)
+  const extra = outstanding.length - shown.length
+
+  const payStatuses = outstanding.map(r => getPaymentStatus(r.tasks ?? []))
+  const urgentColor = payStatuses.some(s => s === 'Invoice Sent')
+    ? '#E24B4A'
+    : payStatuses.some(s => s === 'Partially Paid')
+    ? '#EF9F27'
+    : null
 
   return (
-    <Card hoverable onClick={onClick}>
+    <div
+      onClick={onClick}
+      className={[
+        'rounded-2xl border border-[#332c20] bg-[#1e1a14] p-4',
+        'cursor-pointer hover:border-gold-500/40 hover:bg-[#262018] transition-colors',
+        urgentColor ? 'border-l-[3px]' : '',
+      ].join(' ')}
+      style={urgentColor ? { borderLeftColor: urgentColor } : undefined}
+    >
       <div className="flex items-center justify-between">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-[#f5f0e8]">{unit.unit_number}</span>
-          </div>
+          <span className="font-semibold text-[#f5f0e8]">{unit.unit_number}</span>
           <p className="text-xs text-[#5c5040] mt-0.5">{unit.building}</p>
           {tags.length > 0 && (
             <div className="mt-1.5">
@@ -181,15 +232,49 @@ function UnitCard({ unit, onClick }: { unit: Unit; onClick: () => void }) {
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0 ml-3">
-          {(unit.records ?? []).length > 0 && (
+          {allRecords.length > 0 && (
             <span className="text-xs text-[#5c5040]">
-              {unit.records!.length} record{unit.records!.length !== 1 ? 's' : ''}
+              {allRecords.length} record{allRecords.length !== 1 ? 's' : ''}
             </span>
           )}
           <ChevronRight size={16} className="text-[#5c5040]" />
         </div>
       </div>
-    </Card>
+
+      {shown.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-[#332c20] space-y-1.5">
+          {shown.map(r => <RecordSummaryRow key={r.id} record={r} />)}
+          {extra > 0 && (
+            <p className="text-[11px] text-[#5c5040] pl-0.5">+{extra} more</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function RecordSummaryRow({ record }: { record: PropertyRecord }) {
+  const tasks = (record.tasks ?? []) as { title: string; status: string }[]
+  const done = tasks.filter(t => t.status === 'Completed' || t.status === 'Fully Paid').length
+  const total = tasks.length
+  const payStatus = getPaymentStatus(tasks)
+
+  return (
+    <div className="flex items-center gap-2 min-w-0">
+      <span className={`shrink-0 px-2 py-0.5 rounded-md text-[10px] font-semibold ${RECORD_TYPE_BADGE[record.type] ?? ''}`}>
+        {RECORD_TYPE_SHORT[record.type] ?? record.type}
+      </span>
+      {total > 0 && (
+        <span className={`text-xs font-medium tabular-nums ${taskCountColor(done, total)}`}>
+          {done}/{total} tasks
+        </span>
+      )}
+      {payStatus && PAYMENT_PILL_STYLE[payStatus] && (
+        <span className={`ml-auto shrink-0 px-2 py-0.5 rounded-md text-[10px] font-semibold ${PAYMENT_PILL_STYLE[payStatus]}`}>
+          {payStatus}
+        </span>
+      )}
+    </div>
   )
 }
 
