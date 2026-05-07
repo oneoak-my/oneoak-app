@@ -53,18 +53,21 @@ export default function TaskSection({ record }: { record: PropertyRecord }) {
         ['checkin', 'checkout', 'maintenance'].includes(record.type) &&
         !data.some((t) => t.title === 'Payment Status')
       ) {
-        // Record pre-dates Payment Status task — add it now.
-        const sortOrder = record.type === 'checkin' ? 9 : record.type === 'checkout' ? 5 : 3
-        await createTask({
-          record_id: record.id,
-          category: 'default',
-          title: 'Payment Status',
-          is_optional: false,
-          status: 'Invoice Sent' as TaskStatus,
-          sort_order: sortOrder,
-          due_date: null,
-          notes: null,
-        })
+        // Re-fetch from DB before creating to prevent duplicates from concurrent load() calls.
+        const fresh = await getTasks(record.id)
+        if (!fresh.some((t) => t.title === 'Payment Status')) {
+          const sortOrder = record.type === 'checkin' ? 9 : record.type === 'checkout' ? 5 : 3
+          await createTask({
+            record_id: record.id,
+            category: 'default',
+            title: 'Payment Status',
+            is_optional: false,
+            status: 'Invoice Sent' as TaskStatus,
+            sort_order: sortOrder,
+            due_date: null,
+            notes: null,
+          })
+        }
         data = await getTasks(record.id)
       }
 

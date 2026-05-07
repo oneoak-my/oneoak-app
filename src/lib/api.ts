@@ -202,21 +202,22 @@ export async function createDefaultTasks(recordId: string, recordType: RecordTyp
 
   const { data: existing } = await supabase
     .from('tasks')
-    .select('id')
+    .select('title')
     .eq('record_id', recordId)
-    .eq('is_optional', false)
-    .limit(1)
 
-  if (existing && existing.length > 0) {
-    console.log(`Creating default tasks for record ${recordId} type ${recordType} — skipped, already exist`)
+  const existingTitles = new Set(existing?.map((t) => t.title) ?? [])
+  const tasksToInsert = templates.filter((t) => !existingTitles.has(t.title))
+
+  if (tasksToInsert.length === 0) {
+    console.log(`Creating default tasks for record ${recordId} type ${recordType} — skipped, all already exist`)
     return
   }
 
   console.log(`Creating default tasks for record ${recordId} type ${recordType}`)
-  console.log(`[Tasks] Inserting ${templates.length} default tasks for record ${recordId} (${recordType})`)
+  console.log(`[Tasks] Inserting ${tasksToInsert.length} default tasks for record ${recordId} (${recordType})`)
 
   const { data, error } = await supabase.from('tasks').insert(
-    templates.map((t) => ({
+    tasksToInsert.map((t) => ({
       record_id: recordId,
       category: t.category,
       title: t.title,
