@@ -51,11 +51,6 @@ export default function UnitsPage() {
     return matchSearch && matchBuilding && matchTag
   })
 
-  const grouped = BUILDINGS.reduce<Record<string, Unit[]>>((acc, b) => {
-    const items = filtered.filter((u) => u.building === b)
-    if (items.length > 0) acc[b] = items
-    return acc
-  }, {})
 
   return (
     <div className="px-4 py-5 space-y-5">
@@ -147,18 +142,9 @@ export default function UnitsPage() {
           }
         />
       ) : (
-        <div className="space-y-6">
-          {Object.entries(grouped).map(([building, buildingUnits]) => (
-            <div key={building}>
-              <p className="text-xs font-semibold text-[#7c6f54] uppercase tracking-wider mb-2">
-                {building} <span className="text-[#5c5040] font-normal">({buildingUnits.length})</span>
-              </p>
-              <div className="space-y-2">
-                {buildingUnits.map((unit) => (
-                  <UnitCard key={unit.id} unit={unit} onClick={() => router.push(`/units/${unit.id}`)} />
-                ))}
-              </div>
-            </div>
+        <div className="space-y-2">
+          {filtered.map((unit) => (
+            <UnitCard key={unit.id} unit={unit} onClick={() => router.push(`/units/${unit.id}`)} />
           ))}
         </div>
       )}
@@ -179,19 +165,16 @@ function UnitCard({ unit, onClick }: { unit: Unit; onClick: () => void }) {
           <div className="flex items-center gap-2">
             <span className="font-semibold text-[#f5f0e8]">{unit.unit_number}</span>
           </div>
+          <p className="text-xs text-[#5c5040] mt-0.5">{unit.building}</p>
           {tags.length > 0 && (
             <div className="mt-1.5">
               <UnitTagBadges tags={tags} />
             </div>
           )}
-          {activeRecord && (
-            <p className="text-xs text-[#7c6f54] mt-1 truncate">
-              {activeRecord.tenant_name ?? 'Unnamed tenant'}
-              {activeRecord.monthly_rental ? ` · ${formatCurrency(activeRecord.monthly_rental)}/mo` : ''}
+          {activeRecord?.monthly_rental && (
+            <p className="text-xs text-[#7c6f54] mt-1">
+              {formatCurrency(activeRecord.monthly_rental)}/mo
             </p>
-          )}
-          {!activeRecord && tags.length === 0 && (
-            <p className="text-xs text-[#5c5040] mt-1">No active tenant</p>
           )}
           {unit.lister && (
             <p className="text-xs text-[#4a4030] mt-0.5">Lister: {unit.lister}</p>
