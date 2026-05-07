@@ -221,7 +221,7 @@ export async function createDefaultTasks(recordId: string, recordType: RecordTyp
       category: t.category,
       title: t.title,
       is_optional: false,
-      status: 'Open' as const,
+      status: (t.title === 'Payment Status' ? 'Invoice Sent' : 'Open') as Task['status'],
       sort_order: t.sort_order,
       due_date: null,
       notes: null,

@@ -8,17 +8,24 @@ import { OPTIONAL_TASK_LISTS } from '@/lib/taskTemplates'
 import type { OptionalTaskList } from '@/lib/taskTemplates'
 
 const STATUS_CYCLE: TaskStatus[] = ['Open', 'In Progress', 'Completed']
+const PAYMENT_CYCLE: TaskStatus[] = ['Invoice Sent', 'Partially Paid', 'Fully Paid']
 
 const STATUS_PILL: Record<TaskStatus, string> = {
-  'Open':        'bg-[#332c20] text-[#a89d84] border-[#3d3628]',
-  'In Progress': 'bg-orange-500/20 text-orange-300 border-orange-500/30',
-  'Completed':   'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+  'Open':           'bg-[#332c20] text-[#a89d84] border-[#3d3628]',
+  'In Progress':    'bg-orange-500/20 text-orange-300 border-orange-500/30',
+  'Completed':      'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+  'Invoice Sent':   'bg-blue-500/20 text-blue-300 border-blue-500/30',
+  'Partially Paid': 'bg-orange-500/20 text-orange-300 border-orange-500/30',
+  'Fully Paid':     'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
 }
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
-  'Open':        'Open',
-  'In Progress': 'In Progress',
-  'Completed':   'Done',
+  'Open':           'Open',
+  'In Progress':    'In Progress',
+  'Completed':      'Done',
+  'Invoice Sent':   'Invoice Sent',
+  'Partially Paid': 'Partial',
+  'Fully Paid':     'Fully Paid',
 }
 
 export default function TaskSection({ record }: { record: PropertyRecord }) {
@@ -42,6 +49,23 @@ export default function TaskSection({ record }: { record: PropertyRecord }) {
         await createDefaultTasks(record.id, record.type)
         data = await getTasks(record.id)
         console.log(`[TaskSection] After seeding: ${data.length} tasks`)
+      } else if (
+        ['checkin', 'checkout', 'maintenance'].includes(record.type) &&
+        !data.some((t) => t.title === 'Payment Status')
+      ) {
+        // Record pre-dates Payment Status task — add it now.
+        const sortOrder = record.type === 'checkin' ? 9 : record.type === 'checkout' ? 5 : 3
+        await createTask({
+          record_id: record.id,
+          category: 'default',
+          title: 'Payment Status',
+          is_optional: false,
+          status: 'Invoice Sent' as TaskStatus,
+          sort_order: sortOrder,
+          due_date: null,
+          notes: null,
+        })
+        data = await getTasks(record.id)
       }
 
       setTasks(data)
@@ -56,15 +80,17 @@ export default function TaskSection({ record }: { record: PropertyRecord }) {
 
   const defaultTasks  = tasks.filter((t) => !t.is_optional)
   const optionalTasks = tasks.filter((t) => t.is_optional)
-  const completedCount = tasks.filter((t) => t.status === 'Completed').length
+  const completedCount = tasks.filter((t) => t.status === 'Completed' || t.status === 'Fully Paid').length
   const progress = tasks.length > 0 ? completedCount / tasks.length : 0
   const addedTitles = new Set(optionalTasks.map((t) => t.title))
   const optionalLists = OPTIONAL_TASK_LISTS[record.type] ?? []
 
   // Cycle status with optimistic update + revert on error
   async function cycleStatus(task: Task) {
-    const idx = STATUS_CYCLE.indexOf(task.status)
-    const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length]
+    const isPayment = task.title === 'Payment Status'
+    const cycle = isPayment ? PAYMENT_CYCLE : STATUS_CYCLE
+    const idx = cycle.indexOf(task.status)
+    const next = cycle[(idx === -1 ? 0 : idx + 1) % cycle.length]
     setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, status: next } : t))
     await updateTask(task.id, { status: next }).catch((e) => {
       console.error('[TaskSection] cycleStatus error:', e)
@@ -221,16 +247,16 @@ function TaskRow({
   onDelete?: () => void
   showDivider: boolean
 }) {
-  const isDone = task.status === 'Completed'
+  const isDone = task.status === 'Completed' || task.status === 'Fully Paid'
 
   return (
     <div className={`flex items-center gap-3 px-4 py-3 bg-[#1e1a14] ${showDivider ? 'border-b border-[#332c20]' : ''}`}>
       {/* Status pill — tap to cycle */}
       <button
         onClick={() => onCycle(task)}
-        className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all active:scale-95 ${STATUS_PILL[task.status]}`}
+        className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all active:scale-95 ${STATUS_PILL[task.status] ?? STATUS_PILL['Open']}`}
       >
-        {STATUS_LABEL[task.status]}
+        {STATUS_LABEL[task.status] ?? task.status}
       </button>
 
       {/* Title */}

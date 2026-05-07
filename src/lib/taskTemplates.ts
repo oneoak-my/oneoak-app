@@ -17,16 +17,19 @@ export const DEFAULT_TASK_TEMPLATES: Record<RecordType, TaskTemplate[]> = {
     { category: 'default', title: 'Register Tenant',           is_optional: false, sort_order: 6 },
     { category: 'default', title: 'Compiled Stamped TA',       is_optional: false, sort_order: 7 },
     { category: 'default', title: 'Report Sent',               is_optional: false, sort_order: 8 },
+    { category: 'default', title: 'Payment Status',            is_optional: false, sort_order: 9 },
   ],
   checkout: [
     { category: 'default', title: 'Inspect the Unit',             is_optional: false, sort_order: 1 },
     { category: 'default', title: 'Request Meter Reading & Bills', is_optional: false, sort_order: 2 },
     { category: 'default', title: 'Request Indah Water Bill',     is_optional: false, sort_order: 3 },
     { category: 'default', title: 'Report Sent',                  is_optional: false, sort_order: 4 },
+    { category: 'default', title: 'Payment Status',               is_optional: false, sort_order: 5 },
   ],
   maintenance: [
     { category: 'default', title: 'Report to Management',                         is_optional: false, sort_order: 1 },
     { category: 'default', title: 'Schedule Appointment with Contractor/Tenant',   is_optional: false, sort_order: 2 },
+    { category: 'default', title: 'Payment Status',                                is_optional: false, sort_order: 3 },
   ],
   renewal: [
     { category: 'default', title: 'Renewal Letter Drafted',            is_optional: false, sort_order: 1 },

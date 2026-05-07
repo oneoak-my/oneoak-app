@@ -1,6 +1,6 @@
 // ── Task types ────────────────────────────────────────────────────────────────
 
-export type TaskStatus = 'Open' | 'In Progress' | 'Completed'
+export type TaskStatus = 'Open' | 'In Progress' | 'Completed' | 'Invoice Sent' | 'Partially Paid' | 'Fully Paid'
 export type TaskCategory = 'default' | 'tenant_request' | 'repair' | 'todo' | 'type_of_repair'
 
 export interface Task {
