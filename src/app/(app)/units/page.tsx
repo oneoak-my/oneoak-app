@@ -201,6 +201,8 @@ function UnitCard({ unit, onClick }: { unit: Unit; onClick: () => void }) {
     ? '#E24B4A'
     : payStatuses.some(s => s === 'Partially Paid')
     ? '#EF9F27'
+    : payStatuses.some(s => s === 'Fully Paid')
+    ? '#3B6D11'
     : null
 
   return (

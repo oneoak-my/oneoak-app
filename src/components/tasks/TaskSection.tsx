@@ -8,7 +8,7 @@ import { OPTIONAL_TASK_LISTS } from '@/lib/taskTemplates'
 import type { OptionalTaskList } from '@/lib/taskTemplates'
 
 const STATUS_CYCLE: TaskStatus[] = ['Open', 'In Progress', 'Completed']
-const PAYMENT_CYCLE: TaskStatus[] = ['Invoice Sent', 'Partially Paid', 'Fully Paid']
+const PAYMENT_CYCLE: TaskStatus[] = ['Open', 'Invoice Sent', 'Partially Paid', 'Fully Paid']
 
 const STATUS_PILL: Record<TaskStatus, string> = {
   'Open':           'bg-[#332c20] text-[#a89d84] border-[#3d3628]',
@@ -62,7 +62,7 @@ export default function TaskSection({ record }: { record: PropertyRecord }) {
             category: 'default',
             title: 'Payment Status',
             is_optional: false,
-            status: 'Invoice Sent' as TaskStatus,
+            status: 'Open' as TaskStatus,
             sort_order: sortOrder,
             due_date: null,
             notes: null,
