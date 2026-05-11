@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Search, Building2, ChevronRight } from 'lucide-react'
+import { Plus, Search, Building2, ChevronRight, Upload } from 'lucide-react'
 import { getUnits, createUnit, extractError } from '@/lib/api'
 import type { Unit, UnitStatusTag } from '@/lib/types'
 import { BUILDINGS, LISTER_OPTIONS, ALL_UNIT_TAGS, UNIT_TAG_STYLES } from '@/lib/types'
@@ -13,6 +13,7 @@ import Input, { Select } from '@/components/ui/Input'
 import EmptyState from '@/components/ui/EmptyState'
 import { formatCurrency } from '@/lib/utils'
 import type { PropertyRecord } from '@/lib/types'
+import BulkUploadModal from './BulkUploadModal'
 
 const RECORD_TYPE_BADGE: Record<string, string> = {
   checkin:     'bg-blue-500/20 text-blue-300',
@@ -54,6 +55,7 @@ export default function UnitsPage() {
   const [buildingFilter, setBuildingFilter] = useState('All')
   const [tagFilter, setTagFilter] = useState<UnitStatusTag | 'all'>('all')
   const [showAdd, setShowAdd] = useState(false)
+  const [showBulkUpload, setShowBulkUpload] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -148,9 +150,14 @@ export default function UnitsPage() {
         <p className="text-xs text-[#7c6f54]">
           {loading ? 'Loading…' : `${filtered.length} unit${filtered.length !== 1 ? 's' : ''}`}
         </p>
-        <Button variant="primary" size="sm" icon={<Plus size={14} />} onClick={() => setShowAdd(true)}>
-          Add Unit
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" size="sm" icon={<Upload size={13} />} onClick={() => setShowBulkUpload(true)}>
+            Bulk Upload
+          </Button>
+          <Button variant="primary" size="sm" icon={<Plus size={14} />} onClick={() => setShowAdd(true)}>
+            Add Unit
+          </Button>
+        </div>
       </div>
 
       {/* List */}
@@ -180,6 +187,7 @@ export default function UnitsPage() {
       )}
 
       <AddUnitModal open={showAdd} onClose={() => setShowAdd(false)} onAdded={() => { setShowAdd(false); load() }} />
+      <BulkUploadModal open={showBulkUpload} onClose={() => setShowBulkUpload(false)} onDone={load} />
     </div>
   )
 }
