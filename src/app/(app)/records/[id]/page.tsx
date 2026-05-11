@@ -153,11 +153,16 @@ async function downloadRenewalPdf(record: PropertyRecord, useTopup: boolean): Pr
   ])
   y -= 10
 
-  // ── Bullet helper ───────────────────────────────────────────────────────────
+  // ── Numbered clause helper ──────────────────────────────────────────────────
+  let clauseNum = 0
   const bulletMixed = (segs: Seg[]): void => {
-    const indent = M + 14
-    const maxW = CW - 14
-    page.drawText('-', { x: M, y, size: 10, font: regular, color: ink })
+    clauseNum++
+    const numStr = `${clauseNum}.`
+    const numW = regular.widthOfTextAtSize(numStr, 10)
+    const gap = 5
+    const indent = M + numW + gap
+    const maxW = CW - numW - gap
+    page.drawText(numStr, { x: M, y, size: 10, font: regular, color: ink })
     let lx = indent
     let lineW = 0
     let firstOnLine = true
@@ -219,8 +224,6 @@ async function downloadRenewalPdf(record: PropertyRecord, useTopup: boolean): Pr
   const headerY = y
 
   const drawRow = (cells: string[], isHeader: boolean, isTotal: boolean) => {
-    const bg = isHeader ? rgb(0.93, 0.89, 0.80) : isTotal ? rgb(0.95, 0.92, 0.86) : null
-    if (bg) page.drawRectangle({ x: tX, y: y - rowH + 4, width: tableW, height: rowH, color: bg })
     let cx = tX + 5
     cells.forEach((cell, ci) => {
       const f = (isHeader || isTotal) ? bold : regular
@@ -245,7 +248,7 @@ async function downloadRenewalPdf(record: PropertyRecord, useTopup: boolean): Pr
     vx += w
     page.drawLine({ start: { x: vx, y }, end: { x: vx, y: headerY + 4 }, thickness: 0.3, color: mid })
   })
-  y -= 10
+  y -= 34  // 10 normal + 24 extra spacing after table
 
   // ── Remaining clauses ──────────────────────────────────────────────────────
   bulletMixed([
@@ -320,33 +323,31 @@ async function downloadRenewalWord(record: PropertyRecord, useTopup: boolean): P
   const cellBorder = { style: BorderStyle.SINGLE, size: 4, color: 'auto' }
   const allBorders = { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder, insideHorizontal: cellBorder, insideVertical: cellBorder }
 
-  const makeCell = (text: string, isBold = false, isHeader = false) =>
+  const makeCell = (text: string, isBold = false) =>
     new TableCell({
       children: [new Paragraph({ children: [new TextRun({ text, bold: isBold, size: SZ })] })],
-      shading: isHeader ? { fill: 'EDE4D4' } : undefined,
     })
 
   const depositsTable = new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: allBorders,
     rows: [
-      new TableRow({ children: [makeCell('Description', true, true), makeCell('New Tenancy (RM)', true, true), makeCell('Previous Tenancy (RM)', true, true), makeCell('Top-Up (RM)', true, true)] }),
+      new TableRow({ children: [makeCell('Description', true), makeCell('New Tenancy (RM)', true), makeCell('Previous Tenancy (RM)', true), makeCell('Top-Up (RM)', true)] }),
       new TableRow({ children: [makeCell('Security Deposit'), makeCell(fmtRMLetter(newSec)), makeCell(fmtRMLetter(prevSec)), makeCell(fmtRMLetter(secTop))] }),
       new TableRow({ children: [makeCell('Utilities Deposit'), makeCell(fmtRMLetter(newUtil)), makeCell(fmtRMLetter(prevUtil)), makeCell(fmtRMLetter(utilTop))] }),
       new TableRow({ children: [makeCell('Total', true), makeCell(fmtRMLetter(newSec + newUtil), true), makeCell(fmtRMLetter(prevSec + prevUtil), true), makeCell(fmtRMLetter(secTop + utilTop), true)] }),
     ],
   })
 
-  const bp = (children: InstanceType<typeof TextRun>[]) =>
-    new Paragraph({ children: [new TextRun({ text: '- ', size: SZ }), ...children], spacing: { after: 120 } })
+  let wClauseNum = 0
+  const bp = (children: InstanceType<typeof TextRun>[]) => {
+    wClauseNum++
+    return new Paragraph({ children: [new TextRun({ text: `${wClauseNum}. `, size: SZ }), ...children], spacing: { after: 120 } })
+  }
 
   const clause4Text = useTopup
     ? 'The Tenant is required to pay the following for renewal of the Tenancy Agreement:'
     : 'The Deposits amount remained the same for the renewal of the Tenancy Agreement:'
-
-  const additionalTermsPara = record.additional_terms?.trim()
-    ? [bp([new TextRun({ text: record.additional_terms.trim(), size: SZ })])]
-    : []
 
   const sigColWidth = 4500
   const noBorder = { style: BorderStyle.NONE }
@@ -379,7 +380,7 @@ async function downloadRenewalWord(record: PropertyRecord, useTopup: boolean): P
         bp([new TextRun({ text: `Both the Landlord and the Tenant have confirmed the renewal of the Tenancy Agreement for a further term of ${renewalLen} at a monthly rental of `, size: SZ }), new TextRun({ text: `RM ${fmtRMLetter(record.monthly_rental)}.`, bold: true, size: SZ })]),
         bp([new TextRun({ text: clause4Text, size: SZ })]),
         depositsTable,
-        new Paragraph({ text: '', spacing: { after: 120 } }),
+        new Paragraph({ spacing: { after: 480 } }),
         bp([
           new TextRun({ text: 'The said extension shall effect from ', size: SZ }),
           new TextRun({ text: fmtDateLetter(record.renewal_start_date), bold: true, size: SZ }),
@@ -389,7 +390,9 @@ async function downloadRenewalWord(record: PropertyRecord, useTopup: boolean): P
           new TextRun({ text: fmtDateLetter(record.original_ta_date) + '.', bold: true, size: SZ }),
         ]),
         bp([new TextRun({ text: 'In the event of any inconsistency between the terms of this Letter and the Tenancy Agreement, the terms of this Letter shall prevail.', size: SZ })]),
-        ...additionalTermsPara,
+        ...(record.additional_terms?.trim()
+          ? [bp([new TextRun({ text: record.additional_terms.trim(), size: SZ })])]
+          : []),
         new Paragraph({ text: '', spacing: { after: 240 } }),
         new Paragraph({
           children: [new TextRun({ text: 'In witness whereof the parties hereby agreed on the above mentioned terms and conditions:', size: SZ })],
