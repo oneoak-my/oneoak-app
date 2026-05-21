@@ -170,7 +170,6 @@ export function generateMoveInReport(record: PropertyRecord): string {
     lines.push(``, `*Total Services: ${formatCurrency(services.reduce((sum, s) => sum + s.amount, 0))}*`)
   }
 
-  if (record.notes) lines.push(``, `📝 Notes: ${record.notes}`)
   lines.push(``, `Once payment is made, kindly share with us the proof of payment. Thank you! 🙏`)
   return lines.join('\n')
 }
@@ -347,7 +346,6 @@ export function generateMaintenanceReport(record: PropertyRecord): string {
     lines.push(``, `*Total: ${formatCurrency(total)}*`)
   }
 
-  if (record.notes) lines.push(``, `📝 Notes: ${record.notes}`)
   lines.push(``, `Once payment is made, kindly share with us the proof of payment. Thank you! 🙏`)
   return lines.join('\n')
 }
