@@ -50,6 +50,25 @@ function mimeFromUrl(url: string): string {
   return 'image/jpeg'
 }
 
+// ── Service inclusion rules per record type ───────────────────────────────────
+
+function shouldIncludeInBundle(paymentBy: string | null, recordType: string): boolean {
+  const p = paymentBy ?? ''
+  if (recordType === 'checkin') {
+    return p !== 'Pay by One Oak'
+  }
+  if (recordType === 'checkout') {
+    return (
+      p === 'Deduct from Deposit' ||
+      p === 'Deduct from Deposit + Pay by One Oak' ||
+      p === 'Tenant Pay Direct' ||
+      p === ''
+    )
+  }
+  // maintenance: include all except Pay by One Oak
+  return p !== 'Pay by One Oak'
+}
+
 // ── Route — GET /api/invoice-bundle?recordId=... ──────────────────────────────
 
 export async function GET(request: Request) {
@@ -90,7 +109,9 @@ export async function GET(request: Request) {
       provider: { name: string; bank_name: string; bank_account: string } | null
     }
 
-    const allServices = (servicesData ?? []) as ServiceRow[]
+    const allServices = ((servicesData ?? []) as ServiceRow[]).filter(
+      (s) => shouldIncludeInBundle(s.payment_by ?? null, record.type),
+    )
 
     const getPriority = (desc: string): number => {
       const d = (desc ?? '').toLowerCase()
@@ -102,7 +123,7 @@ export async function GET(request: Request) {
       return 6
     }
 
-    // Cover shows all services sorted by priority; invoice pages only use services with files
+    // Cover shows filtered services sorted by priority; invoice pages only use services with files
     const services = [...allServices].sort((a, b) => {
       const pa = getPriority(a.description ?? '')
       const pb = getPriority(b.description ?? '')
@@ -268,13 +289,16 @@ export async function GET(request: Request) {
               thickness: 0.3, color: gold,
             })
 
-            const imgAreaTop = labelY - 30
-            const imgAreaH   = imgAreaTop - M
-            const scaled     = img.scaleToFit(CW, imgAreaH)
-            const imgX       = M + (CW - scaled.width) / 2
-            const imgY       = imgAreaTop - scaled.height
+            const { width: imgW, height: imgH } = img
+            const pageW = p.getWidth() - 80
+            const pageH = p.getHeight() - 80
+            const scale = Math.min(pageW / imgW, pageH / imgH)
+            const drawW = imgW * scale
+            const drawH = imgH * scale
+            const imgX = (p.getWidth() - drawW) / 2
+            const imgY = (p.getHeight() - drawH) / 2
 
-            p.drawImage(img, { x: imgX, y: imgY, width: scaled.width, height: scaled.height })
+            p.drawImage(img, { x: imgX, y: imgY, width: drawW, height: drawH })
           } catch {
             const p = pdfDoc.addPage([PW, PH])
             p.drawText(`Could not embed image: ${trunc(service.description, 60)}`, {

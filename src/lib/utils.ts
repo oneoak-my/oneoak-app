@@ -122,7 +122,9 @@ function providerBlock(g: ProviderGroup): string[] {
 
 export function generateMoveInReport(record: PropertyRecord): string {
   const unit = record.unit
-  const services = sortServices(record.services ?? [])
+  const services = sortServices(
+    (record.services ?? []).filter((s) => s.payment_by !== 'Pay by One Oak'),
+  )
 
   const lines: string[] = [
     `🏠 *MOVE-IN REPORT*`,
@@ -180,7 +182,9 @@ const ROMAN_NUMERALS = [
 
 export function generateMoveOutReport(record: PropertyRecord): string {
   const unit = record.unit
-  const allServices = sortServices(record.services ?? [])
+  const allServices = sortServices(
+    (record.services ?? []).filter((s) => s.payment_by !== 'Pay by One Oak'),
+  )
 
   // Services that count toward deposit deduction
   const deductServices = sortServices(
