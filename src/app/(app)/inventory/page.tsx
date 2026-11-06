@@ -32,6 +32,7 @@ export default function InventoryListPage() {
   const [showNew, setShowNew] = useState(false)
   const [newUnitId, setNewUnitId] = useState('')
   const [newHeading, setNewHeading] = useState('')
+  const [newShortAddress, setNewShortAddress] = useState('')
   const [creating, setCreating] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
@@ -54,9 +55,13 @@ export default function InventoryListPage() {
     setNewUnitId(unitId)
     if (unitId) {
       const u = units.find((u) => u.id === unitId)
-      if (u) setNewHeading(`${u.unit_number}, ${u.building}`)
+      if (u) {
+        setNewHeading(`${u.unit_number}, ${u.building}`)
+        setNewShortAddress(`${u.unit_number} ${u.building}`)
+      }
     } else {
       setNewHeading('')
+      setNewShortAddress('')
     }
   }
 
@@ -66,6 +71,7 @@ export default function InventoryListPage() {
       const inv = await createInventory({
         unit_id: newUnitId || null,
         heading: newHeading || null,
+        short_address: newShortAddress || null,
         inventory_date: new Date().toISOString().split('T')[0],
         areas: [],
         include_meter_reading: false,
@@ -103,7 +109,7 @@ export default function InventoryListPage() {
           variant="primary"
           size="sm"
           icon={<Plus size={14} />}
-          onClick={() => { setNewUnitId(''); setNewHeading(''); setShowNew(true) }}
+          onClick={() => { setNewUnitId(''); setNewHeading(''); setNewShortAddress(''); setShowNew(true) }}
         >
           New Inventory
         </Button>
@@ -127,7 +133,7 @@ export default function InventoryListPage() {
             key={inv.id}
             onClick={() => router.push(`/inventory/${inv.id}`)}
             style={{ touchAction: 'manipulation', minHeight: '64px' }}
-            className="w-full text-left bg-[#1a1610] border border-[#2a2318] rounded-2xl px-4 py-3.5 hover:border-[#3d3628] transition-colors active:scale-[0.99]"
+            className="w-full text-left bg-[#1e1a14] border border-[#332c20] rounded-2xl px-4 py-3.5 hover:border-[#3d3628] transition-colors active:scale-[0.99]"
           >
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1 min-w-0">
@@ -161,8 +167,8 @@ export default function InventoryListPage() {
             onChange={(e) => handleUnitChange(e.target.value)}
           />
           <Input
-            label="Heading"
-            placeholder="e.g. A-32-06, OOAK RESIDENCE, …"
+            label="Address"
+            placeholder="e.g. A-27-09 Ooak Residence, Jalan Kiara 5, 50480 Mont Kiara, Kuala Lumpur"
             value={newHeading}
             onChange={(e) => setNewHeading(e.target.value)}
           />

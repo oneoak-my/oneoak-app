@@ -15,6 +15,7 @@ export interface Inventory {
   id: string
   unit_id: string | null
   heading: string | null
+  short_address?: string | null
   inventory_date: string
   areas: AreaData[]
   include_meter_reading: boolean

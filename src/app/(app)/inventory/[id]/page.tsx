@@ -131,7 +131,7 @@ function ItemRow({ item, sel, onTick, onUntick, onUpdate, customBrands, onAddBra
   const displayLabel = sel?.variant || item.label
 
   return (
-    <div className={`border-b border-[#1e1a14] last:border-0 ${ticked ? 'bg-[#1a1610]' : ''}`}>
+    <div className={`border-b border-[#332c20] last:border-0 ${ticked ? 'bg-[#1e1a14]' : ''}`}>
       {/* Tick row */}
       <button
         onClick={ticked ? onUntick : onTick}
@@ -439,9 +439,9 @@ function AreaCard({
     : []
 
   return (
-    <div className="bg-[#141210] border border-[#2a2318] rounded-2xl overflow-hidden">
+    <div className="bg-[#141210] border border-[#332c20] rounded-2xl overflow-hidden">
       {/* Area header */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1e1a14]">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-[#332c20]">
         <button
           onClick={() => setCollapsed((c) => !c)}
           style={{ touchAction: 'manipulation' }}
@@ -512,7 +512,7 @@ function AreaCard({
               <button
                 onClick={() => setMoreOpen((o) => !o)}
                 style={{ touchAction: 'manipulation', minHeight: '40px' }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-[#7c6f54] hover:text-[#a89d84] border-t border-[#1e1a14] transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-[#7c6f54] hover:text-[#a89d84] border-t border-[#332c20] transition-colors"
               >
                 {moreOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                 More items ({moreIds.length})
@@ -541,7 +541,7 @@ function AreaCard({
           {extraItems.map((sel, idx) => {
             if (sel.itemId === 'custom') {
               return (
-                <div key={idx} className="flex items-center gap-2 px-3 py-2 border-t border-[#1e1a14]">
+                <div key={idx} className="flex items-center gap-2 px-3 py-2 border-t border-[#332c20]">
                   <div className="w-5 h-5 rounded border-2 border-gold-500 bg-gold-500 flex items-center justify-center shrink-0">
                     <Check size={12} strokeWidth={3} className="text-[#0e0c08]" />
                   </div>
@@ -575,7 +575,7 @@ function AreaCard({
           })}
 
           {/* Add from another area */}
-          <div className="border-t border-[#1e1a14] px-3 py-2 space-y-2">
+          <div className="border-t border-[#332c20] px-3 py-2 space-y-2">
             {showSearch ? (
               <div className="space-y-1.5">
                 <div className="relative">
@@ -671,10 +671,10 @@ function AddAreaSheet({ open, onClose, onSelect }: AddAreaSheetProps) {
     <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
       <div
-        className="relative w-full max-w-2xl bg-[#1a1610] border-t border-[#2a2318] rounded-t-2xl max-h-[80dvh] flex flex-col"
+        className="relative w-full max-w-2xl bg-[#1e1a14] border-t border-[#332c20] rounded-t-2xl max-h-[80dvh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-4 pt-4 pb-2 border-b border-[#2a2318] flex items-center justify-between shrink-0">
+        <div className="px-4 pt-4 pb-2 border-b border-[#332c20] flex items-center justify-between shrink-0">
           <h3 className="text-sm font-semibold text-[#f5f0e8]">Add area</h3>
           <button onClick={onClose} className="p-1.5 text-[#7c6f54] hover:text-[#f5f0e8]"><X size={16} /></button>
         </div>
@@ -693,7 +693,7 @@ function AddAreaSheet({ open, onClose, onSelect }: AddAreaSheetProps) {
           <button
             onClick={() => { onSelect(null); onClose() }}
             style={{ minHeight: '48px', touchAction: 'manipulation' }}
-            className="w-full text-left px-4 py-3 hover:bg-[#262018] transition-colors border-t border-[#1e1a14]"
+            className="w-full text-left px-4 py-3 hover:bg-[#262018] transition-colors border-t border-[#332c20]"
           >
             <span className="text-sm text-[#f5f0e8]">Custom area</span>
           </button>
@@ -732,6 +732,7 @@ export default function InventoryEditorPage() {
       try {
         await saveInventory(inv.id, {
           heading: inv.heading,
+          short_address: inv.short_address,
           inventory_date: inv.inventory_date,
           areas: inv.areas,
           include_meter_reading: inv.include_meter_reading,
@@ -852,7 +853,7 @@ export default function InventoryEditorPage() {
   return (
     <div className="min-h-screen bg-[#0e0c08] pb-32">
       {/* Header */}
-      <div className="sticky top-0 z-30 bg-[#0e0c08]/95 backdrop-blur border-b border-[#1e1a14] px-4 py-3 flex items-center gap-3">
+      <div className="sticky top-0 z-30 bg-[#0e0c08]/95 backdrop-blur border-b border-[#332c20] px-4 py-3 flex items-center gap-3">
         <button
           onClick={() => router.push('/inventory')}
           style={{ minHeight: '44px', minWidth: '44px', touchAction: 'manipulation' }}
@@ -882,15 +883,24 @@ export default function InventoryEditorPage() {
       </div>
 
       <div className="px-4 pt-4 max-w-2xl mx-auto space-y-4">
-        {/* Heading + date */}
+        {/* Address + short address + date */}
         <div className="space-y-3">
           <div>
-            <label className="text-[10px] text-[#7c6f54] uppercase tracking-wider mb-1 block">Heading</label>
+            <label className="text-[10px] text-[#7c6f54] uppercase tracking-wider mb-1 block">Address</label>
             <input
               className="w-full rounded-xl border border-[#332c20] bg-[#262018] px-3 py-2.5 text-sm text-[#f5f0e8] placeholder-[#5c5040] focus:outline-none focus:border-gold-500/60"
-              placeholder="e.g. A-32-06, OOAK RESIDENCE, …"
+              placeholder="e.g. A-27-09 Ooak Residence, Jalan Kiara 5, 50480 Mont Kiara, Kuala Lumpur"
               value={inventory.heading ?? ''}
               onChange={(e) => patch({ heading: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className="text-[10px] text-[#7c6f54] uppercase tracking-wider mb-1 block">Short Address</label>
+            <input
+              className="w-full rounded-xl border border-[#332c20] bg-[#262018] px-3 py-2.5 text-sm text-[#f5f0e8] placeholder-[#5c5040] focus:outline-none focus:border-gold-500/60"
+              placeholder="e.g. A-27-09 Ooak Residence"
+              value={inventory.short_address ?? ''}
+              onChange={(e) => patch({ short_address: e.target.value })}
             />
           </div>
           <div>
@@ -932,7 +942,7 @@ export default function InventoryEditorPage() {
         <button
           onClick={() => setAddAreaOpen(true)}
           style={{ touchAction: 'manipulation', minHeight: '48px' }}
-          className="w-full flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[#2a2318] hover:border-[#3d3628] text-[#7c6f54] hover:text-[#a89d84] text-sm transition-colors py-3"
+          className="w-full flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[#332c20] hover:border-[#3d3628] text-[#7c6f54] hover:text-[#a89d84] text-sm transition-colors py-3"
         >
           <Plus size={16} />Add area
         </button>

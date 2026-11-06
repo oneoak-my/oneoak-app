@@ -19,6 +19,11 @@ function getFileStem(inv: Inventory): string {
   return `${unit}-inventory-list-${date}`
 }
 
+function getShortAddr(inv: Inventory): string {
+  if (inv.short_address?.trim()) return inv.short_address.trim()
+  return inv.heading?.split(',')[0]?.trim() ?? ''
+}
+
 interface RowData {
   label: string
   qty: string
@@ -57,6 +62,7 @@ const ROW_HEIGHT = 302
 const VERDANA = 'Verdana'
 const ARIAL = 'Arial'
 const BODY_SIZE = 18 // 9pt in half-points
+const FOOTER_SIZE = 16 // 8pt in half-points
 const LETTER_CODES = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
 function letter(i: number) { return (LETTER_CODES[i] ?? String(i + 1)) + '.' }
@@ -65,10 +71,11 @@ export async function downloadWord(inventory: Inventory): Promise<void> {
   const {
     Document, Packer, Paragraph, TextRun, AlignmentType,
     Table, TableRow, TableCell, WidthType, TableLayoutType,
-    HeightRule, VerticalAlign, Footer, PageNumber,
+    HeightRule, VerticalAlign, Footer, PageNumber, TabStopType,
   } = await import('docx')
 
   const twips = (n: number) => ({ size: n, type: WidthType.DXA })
+  const shortAddr = getShortAddr(inventory)
 
   // ── Cell factory ────────────────────────────────────────────────────────────
   function makeCell(
@@ -90,6 +97,7 @@ export async function downloadWord(inventory: Inventory): Promise<void> {
       children: [
         new Paragraph({
           alignment: opts.centered ? AlignmentType.CENTER : AlignmentType.LEFT,
+          spacing: { before: 0, after: 0 },
           children: [
             new TextRun({
               text,
@@ -108,10 +116,14 @@ export async function downloadWord(inventory: Inventory): Promise<void> {
     return makeCell('', { colIndex })
   }
 
-  function makeRow(cells: ReturnType<typeof makeCell>[], opts: { cantSplit?: boolean } = {}) {
+  function makeRow(
+    cells: ReturnType<typeof makeCell>[],
+    opts: { cantSplit?: boolean; tableHeader?: boolean } = {},
+  ) {
     return new TableRow({
       height: { value: ROW_HEIGHT, rule: HeightRule.ATLEAST },
       cantSplit: opts.cantSplit !== false,
+      tableHeader: opts.tableHeader,
       children: cells,
     })
   }
@@ -119,19 +131,19 @@ export async function downloadWord(inventory: Inventory): Promise<void> {
   // ── Build table rows ─────────────────────────────────────────────────────────
   const tableRows: ReturnType<typeof makeRow>[] = []
 
-  // Header
+  // Header (repeats on every page via tableHeader: true)
   tableRows.push(makeRow([
     emptyCell(0),
     makeCell('DESCRIPTION', { bold: true, centered: true, colIndex: 1 }),
     makeCell('UNIT', { bold: true, centered: true, colIndex: 2 }),
     makeCell('CHECK IN', { bold: true, centered: true, colIndex: 3 }),
     makeCell('CHECK OUT', { bold: true, centered: true, colIndex: 4 }),
-  ]))
+  ], { tableHeader: true }))
 
   const printAreas = areasWithItems(inventory)
 
   printAreas.forEach((area, areaIdx) => {
-    // Area header row: col1=letter, col2+3=title spanning 2, col4+5=empty
+    // Area header row
     tableRows.push(makeRow([
       makeCell(letter(areaIdx), { bold: true, centered: true, colIndex: 0 }),
       new TableCell({
@@ -142,6 +154,7 @@ export async function downloadWord(inventory: Inventory): Promise<void> {
         children: [
           new Paragraph({
             alignment: AlignmentType.LEFT,
+            spacing: { before: 0, after: 0 },
             children: [new TextRun({ text: area.title.toUpperCase(), font: VERDANA, size: BODY_SIZE, bold: true })],
           }),
         ],
@@ -179,6 +192,7 @@ export async function downloadWord(inventory: Inventory): Promise<void> {
         borders: CELL_BORDERS,
         children: [
           new Paragraph({
+            spacing: { before: 0, after: 0 },
             children: [new TextRun({ text: 'METER READING', font: VERDANA, size: BODY_SIZE, bold: true })],
           }),
         ],
@@ -202,8 +216,8 @@ export async function downloadWord(inventory: Inventory): Promise<void> {
       borders: NO_BORDERS,
       children: [
         new Paragraph({
+          spacing: { before: 0, after: 80 },
           children: [new TextRun({ text, font: VERDANA, size: BODY_SIZE })],
-          spacing: { after: 80 },
         }),
       ],
     })
@@ -221,7 +235,11 @@ export async function downloadWord(inventory: Inventory): Promise<void> {
     borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER, insideHorizontal: NO_BORDER, insideVertical: NO_BORDER },
     rows: [
       sigRow('Confirmed by Landlord/in the presence of,', 'Confirmed by Tenant/in the presence of,'),
-      sigRow('', ''),
+      new TableRow({
+        cantSplit: true,
+        height: { value: 600, rule: HeightRule.ATLEAST },
+        children: [sigCell(''), sigCell('')],
+      }),
       sigRow('______________________', '______________________'),
       sigRow('Name:', 'Name:'),
       sigRow('Date:', 'Date:'),
@@ -254,11 +272,20 @@ export async function downloadWord(inventory: Inventory): Promise<void> {
     children: [new TextRun({ text: headingText, font: ARIAL, size: 22 })],
   })
 
+  // 36pt gap before closing block
+  const gapPara = new Paragraph({
+    text: '',
+    spacing: { after: 720 },
+  })
+
   const footer = new Footer({
     children: [
       new Paragraph({
-        alignment: AlignmentType.CENTER,
-        children: [new TextRun({ children: [PageNumber.CURRENT], font: VERDANA, size: BODY_SIZE })],
+        tabStops: [{ type: TabStopType.RIGHT, position: 8738 }],
+        children: [
+          new TextRun({ text: `${shortAddr} | Inventory list\t`, font: VERDANA, size: FOOTER_SIZE }),
+          new TextRun({ children: [PageNumber.CURRENT], font: VERDANA, size: FOOTER_SIZE }),
+        ],
       }),
     ],
   })
@@ -272,7 +299,7 @@ export async function downloadWord(inventory: Inventory): Promise<void> {
           },
         },
         footers: { default: footer },
-        children: [titlePara, headingPara, mainTable, new Paragraph({ text: '' }), closingTable],
+        children: [titlePara, headingPara, mainTable, gapPara, closingTable],
       },
     ],
   })
@@ -303,23 +330,10 @@ const COL_X = PDF_COLS.reduce<number[]>((acc, w, i) => {
 const FONT_SIZE_BODY = 8.5
 const FONT_SIZE_TITLE = 14
 const FONT_SIZE_HEAD = 11
+const FONT_SIZE_FOOTER = 8
 const ROW_H = 18 * PT
 const LINE_H = FONT_SIZE_BODY + 3
 const FOOTER_H = 20
-
-function drawPageNumber(page: import('pdf-lib').PDFPage, fonts: { reg: import('pdf-lib').PDFFont }, pageNum: number) {
-  const text = String(pageNum)
-  const w = fonts.reg.widthOfTextAtSize(text, FONT_SIZE_BODY)
-  page.drawText(text, {
-    x: PAGE_W / 2 - w / 2,
-    y: MB / 2,
-    size: FONT_SIZE_BODY,
-    font: fonts.reg,
-    color: { type: 'RGB', red: 0, green: 0, blue: 0 } as import('pdf-lib').Color,
-  })
-}
-
-type PdfFonts = { reg: import('pdf-lib').PDFFont; bold: import('pdf-lib').PDFFont }
 
 function wrapText(text: string, font: import('pdf-lib').PDFFont, size: number, maxW: number): string[] {
   const words = text.split(' ')
@@ -344,22 +358,19 @@ export async function downloadPdf(inventory: Inventory): Promise<void> {
 
   const regFont = await pdfDoc.embedFont(StandardFonts.Helvetica)
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
-  const fonts: PdfFonts = { reg: regFont, bold: boldFont }
   const ink = rgb(0, 0, 0)
+  const shortAddr = getShortAddr(inventory)
 
   let page = pdfDoc.addPage([PAGE_W, PAGE_H])
   let pageNum = 1
   let y = PAGE_H - MT
 
-  function newPage() {
-    drawPageNumber(page, fonts, pageNum)
-    page = pdfDoc.addPage([PAGE_W, PAGE_H])
-    pageNum++
-    y = PAGE_H - MT
-  }
-
-  function ensureY(needed: number) {
-    if (y - needed < MB + FOOTER_H) newPage()
+  function drawFooter(pg: import('pdf-lib').PDFPage, pn: number) {
+    const footerText = `${shortAddr} | Inventory list`
+    pg.drawText(footerText, { x: ML, y: MB / 2, size: FONT_SIZE_FOOTER, font: regFont, color: ink })
+    const numText = String(pn)
+    const numW = regFont.widthOfTextAtSize(numText, FONT_SIZE_FOOTER)
+    pg.drawText(numText, { x: PAGE_W - MR - numW, y: MB / 2, size: FONT_SIZE_FOOTER, font: regFont, color: ink })
   }
 
   function drawText(text: string, x: number, cy: number, bold: boolean, size = FONT_SIZE_BODY) {
@@ -391,9 +402,30 @@ export async function downloadPdf(inventory: Inventory): Promise<void> {
       const textX = cell.centered
         ? cellX + cellW / 2 - (cell.bold ? boldFont : regFont).widthOfTextAtSize(cell.text, FONT_SIZE_BODY) / 2
         : cellX + pad
-      drawText(cell.text, textX, y - rowH / 2 - FONT_SIZE_BODY / 2 + 1, cell.bold ?? false)
+      drawText(cell.text, textX, y - rowH / 2 - FONT_SIZE_BODY * 0.35, cell.bold ?? false)
     }
     y -= rowH
+  }
+
+  function drawHeaderRow() {
+    drawRow([
+      { text: 'DESCRIPTION', bold: true, centered: true, colStart: 1 },
+      { text: 'UNIT', bold: true, centered: true, colStart: 2 },
+      { text: 'CHECK IN', bold: true, centered: true, colStart: 3 },
+      { text: 'CHECK OUT', bold: true, centered: true, colStart: 4 },
+    ], ROW_H)
+  }
+
+  function newPage() {
+    drawFooter(page, pageNum)
+    page = pdfDoc.addPage([PAGE_W, PAGE_H])
+    pageNum++
+    y = PAGE_H - MT
+    drawHeaderRow()
+  }
+
+  function ensureY(needed: number) {
+    if (y - needed < MB + FOOTER_H) newPage()
   }
 
   // ── Title block ──────────────────────────────────────────────────────────
@@ -414,16 +446,14 @@ export async function downloadPdf(inventory: Inventory): Promise<void> {
   y -= 8
 
   // ── Header row ────────────────────────────────────────────────────────────
-  drawRow([
-    { text: 'DESCRIPTION', bold: true, centered: true, colStart: 1 },
-    { text: 'UNIT', bold: true, centered: true, colStart: 2 },
-    { text: 'CHECK IN', bold: true, centered: true, colStart: 3 },
-    { text: 'CHECK OUT', bold: true, centered: true, colStart: 4 },
-  ], ROW_H)
+  drawHeaderRow()
 
   const printAreas = areasWithItems(inventory)
 
   printAreas.forEach((area, areaIdx) => {
+    // Orphan prevention: ensure space for area header + first item row
+    if (area.items.length > 0 && y - ROW_H * 2 < MB + FOOTER_H) newPage()
+
     // area header row
     drawRow([
       { text: letter(areaIdx), bold: true, centered: true, colStart: 0 },
@@ -438,19 +468,21 @@ export async function downloadPdf(inventory: Inventory): Promise<void> {
       // borders
       let xc = ML
       for (let ci = 0; ci < 5; ci++) { drawCellBorder(xc, y, PDF_COLS[ci]!, rh); xc += PDF_COLS[ci]! }
-      // number
+      // number (vertically centred)
       const numTxt = `${itemIdx + 1}.`
       const numW = regFont.widthOfTextAtSize(numTxt, FONT_SIZE_BODY)
-      drawText(numTxt, COL_X[0]! + PDF_COLS[0]! / 2 - numW / 2, y - 4 - FONT_SIZE_BODY / 2, false)
-      // description (wrapped)
+      drawText(numTxt, COL_X[0]! + PDF_COLS[0]! / 2 - numW / 2, y - rh / 2 - FONT_SIZE_BODY * 0.35, false)
+      // description (wrapped, vertically centred as a block)
+      const textBlockH = descLines.length * LINE_H
+      const firstLineY = (y - rh / 2) + textBlockH / 2 - FONT_SIZE_BODY * 0.7
       descLines.forEach((line, li) => {
-        drawText(line, COL_X[1]! + 3, y - 4 - FONT_SIZE_BODY / 2 - li * LINE_H, false)
+        drawText(line, COL_X[1]! + 3, firstLineY - li * LINE_H, false)
       })
-      // qty
+      // qty (vertically centred)
       const qW = regFont.widthOfTextAtSize(qty, FONT_SIZE_BODY)
-      drawText(qty, COL_X[2]! + PDF_COLS[2]! / 2 - qW / 2, y - 4 - FONT_SIZE_BODY / 2, false)
-      // check in
-      if (checkIn) drawText(checkIn, COL_X[3]! + 3, y - 4 - FONT_SIZE_BODY / 2, false)
+      drawText(qty, COL_X[2]! + PDF_COLS[2]! / 2 - qW / 2, y - rh / 2 - FONT_SIZE_BODY * 0.35, false)
+      // check in (vertically centred)
+      if (checkIn) drawText(checkIn, COL_X[3]! + 3, y - rh / 2 - FONT_SIZE_BODY * 0.35, false)
       y -= rh
     })
 
@@ -469,24 +501,26 @@ export async function downloadPdf(inventory: Inventory): Promise<void> {
   }
 
   // ── Closing block ─────────────────────────────────────────────────────────
-  const sigLines = [
-    ['Confirmed by Landlord/in the presence of,', 'Confirmed by Tenant/in the presence of,'],
-    ['', ''],
+  const sigBlockH = 36 + (FONT_SIZE_BODY + 8) + 30 + 3 * (FONT_SIZE_BODY + 8) + 10
+  ensureY(sigBlockH)
+  y -= 36
+  const halfW = CONTENT_W / 2
+
+  drawText('Confirmed by Landlord/in the presence of,', ML, y, false)
+  drawText('Confirmed by Tenant/in the presence of,', ML + halfW, y, false)
+  y -= FONT_SIZE_BODY + 8 + 30
+
+  for (const [left, right] of [
     ['______________________', '______________________'],
     ['Name:', 'Name:'],
     ['Date:', 'Date:'],
-  ]
-  const sigBlockH = sigLines.length * (FONT_SIZE_BODY + 8) + 10
-  ensureY(sigBlockH)
-  y -= 16
-  const halfW = CONTENT_W / 2
-  for (const [left, right] of sigLines) {
-    drawText(left!, ML, y, false)
-    drawText(right!, ML + halfW, y, false)
+  ] as [string, string][]) {
+    drawText(left, ML, y, false)
+    drawText(right, ML + halfW, y, false)
     y -= FONT_SIZE_BODY + 8
   }
 
-  drawPageNumber(page, fonts, pageNum)
+  drawFooter(page, pageNum)
 
   const bytes = await pdfDoc.save()
   downloadBlob(new Blob([bytes as unknown as BlobPart], { type: 'application/pdf' }), `${getFileStem(inventory)}.pdf`)
