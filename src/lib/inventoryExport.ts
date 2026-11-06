@@ -48,6 +48,39 @@ function areasWithItems(inventory: Inventory): AreaData[] {
   return inventory.areas.filter((a) => a.items.length > 0)
 }
 
+const LEFT_SIG = 'Confirmed by Landlord/in the presence of,'
+const RIGHT_SIG = 'Confirmed by Tenant/in the presence of,'
+
+/**
+ * Returns the width of `text` set in Verdana Regular 9pt, in twips.
+ * Uses a lookup table of advance widths from the Verdana Regular TrueType
+ * font (UPM 2048). Scale factor: 9pt × 20 twips/pt ÷ 2048 = 180/2048.
+ */
+function measureVerdana9pt(text: string): number {
+  const W: Record<string, number> = {
+    ' ': 455, '!': 609, '"': 663, '#': 1024, '$': 1024, '%': 1526,
+    '&': 1365, "'": 400, '(': 597, ')': 597, '*': 819, '+': 1024,
+    ',': 455, '-': 591, '.': 455, '/': 591,
+    '0': 1024, '1': 1024, '2': 1024, '3': 1024, '4': 1024,
+    '5': 1024, '6': 1024, '7': 1024, '8': 1024, '9': 1024,
+    ':': 455, ';': 455, '<': 1024, '=': 1024, '>': 1024, '?': 892,
+    'A': 1480, 'B': 1300, 'C': 1393, 'D': 1403, 'E': 1176,
+    'F': 1101, 'G': 1480, 'H': 1476, 'I':  597, 'J':  723,
+    'K': 1332, 'L': 1176, 'M': 1696, 'N': 1476, 'O': 1569,
+    'P': 1270, 'Q': 1569, 'R': 1374, 'S': 1157, 'T': 1197,
+    'U': 1448, 'V': 1452, 'W': 1961, 'X': 1313, 'Y': 1332, 'Z': 1282,
+    'a': 1083, 'b': 1109, 'c':  964, 'd': 1109, 'e': 1024,
+    'f':  591, 'g': 1109, 'h': 1109, 'i':  455, 'j':  455,
+    'k': 1024, 'l':  455, 'm': 1676, 'n': 1109, 'o': 1120,
+    'p': 1109, 'q': 1109, 'r':  659, 's':  831, 't':  727,
+    'u': 1109, 'v': 1024, 'w': 1448, 'x': 1024, 'y': 1024, 'z':  896,
+  }
+  const scale = 180 / 2048 // 9pt at 1440 twips/inch, UPM 2048
+  let total = 0
+  for (const ch of text) total += (W[ch] ?? 1024) * scale
+  return Math.round(total)
+}
+
 // ── WORD EXPORT ───────────────────────────────────────────────────────────────
 
 const BORDER = { style: 'single' as const, size: 4, color: '000000' }
@@ -229,18 +262,42 @@ export async function downloadWord(inventory: Inventory): Promise<void> {
     })
   }
 
+  // Paragraph with a bottom border whose width matches the given sentence.
+  // Cell content width = 4500 − 2 × 108 (default Word cell margins) = 4284 twips.
+  // right indent = 4284 − measuredWidth so the border ends where the text ends.
+  function sigLineCell(sentenceText: string) {
+    const tw = measureVerdana9pt(sentenceText)
+    return new TableCell({
+      width: twips(4500),
+      borders: NO_BORDERS,
+      children: [
+        new Paragraph({
+          spacing: { before: 0, after: 80 },
+          indent: { right: Math.max(0, 4284 - tw) },
+          border: {
+            bottom: { style: 'single' as const, size: 4, color: '000000', space: 0 },
+          },
+          children: [],
+        }),
+      ],
+    })
+  }
+
   const closingTable = new Table({
     width: twips(9000),
     layout: TableLayoutType.FIXED,
     borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER, insideHorizontal: NO_BORDER, insideVertical: NO_BORDER },
     rows: [
-      sigRow('Confirmed by Landlord/in the presence of,', 'Confirmed by Tenant/in the presence of,'),
+      sigRow(LEFT_SIG, RIGHT_SIG),
       new TableRow({
         cantSplit: true,
         height: { value: 600, rule: HeightRule.ATLEAST },
         children: [sigCell(''), sigCell('')],
       }),
-      sigRow('______________________', '______________________'),
+      new TableRow({
+        cantSplit: true,
+        children: [sigLineCell(LEFT_SIG), sigLineCell(RIGHT_SIG)],
+      }),
       sigRow('Name:', 'Name:'),
       sigRow('Date:', 'Date:'),
     ],
@@ -506,12 +563,18 @@ export async function downloadPdf(inventory: Inventory): Promise<void> {
   y -= 36
   const halfW = CONTENT_W / 2
 
-  drawText('Confirmed by Landlord/in the presence of,', ML, y, false)
-  drawText('Confirmed by Tenant/in the presence of,', ML + halfW, y, false)
+  drawText(LEFT_SIG, ML, y, false)
+  drawText(RIGHT_SIG, ML + halfW, y, false)
   y -= FONT_SIZE_BODY + 8 + 30
 
+  // Signature lines: measure each sentence with the same font/size used to draw it
+  const leftLineW = regFont.widthOfTextAtSize(LEFT_SIG, FONT_SIZE_BODY)
+  const rightLineW = regFont.widthOfTextAtSize(RIGHT_SIG, FONT_SIZE_BODY)
+  page.drawLine({ start: { x: ML, y }, end: { x: ML + leftLineW, y }, thickness: 0.5, color: ink })
+  page.drawLine({ start: { x: ML + halfW, y }, end: { x: ML + halfW + rightLineW, y }, thickness: 0.5, color: ink })
+  y -= FONT_SIZE_BODY + 8
+
   for (const [left, right] of [
-    ['______________________', '______________________'],
     ['Name:', 'Name:'],
     ['Date:', 'Date:'],
   ] as [string, string][]) {
