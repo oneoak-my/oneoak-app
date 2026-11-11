@@ -1,5 +1,5 @@
-export const MAX_EDGE = 1600
-export const JPEG_QUALITY = 0.75
+export const MAX_EDGE = 1280
+export const JPEG_QUALITY = 0.72
 
 export interface CompressedImage { blob: Blob; width: number; height: number }
 
