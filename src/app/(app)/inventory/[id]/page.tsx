@@ -15,6 +15,7 @@ import type { Inventory, AreaData, CustomItemSelection } from '@/lib/inventoryTy
 import { getInventory, saveInventory, getBrands, addBrand } from '@/lib/inventoryApi'
 import { downloadWord, downloadPdf } from '@/lib/inventoryExport'
 import { supabase } from '@/lib/supabase'
+import PhotosTab from '@/components/inventory/PhotosTab'
 
 // ── Utility ───────────────────────────────────────────────────────────────────
 
@@ -716,6 +717,7 @@ export default function InventoryEditorPage() {
   const [addAreaOpen, setAddAreaOpen] = useState(false)
   const [customBrands, setCustomBrands] = useState<Record<string, string[]>>({})
   const [exporting, setExporting] = useState<'word' | 'pdf' | null>(null)
+  const [tab, setTab] = useState<'checklist' | 'photos'>('checklist')
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inventoryRef = useRef<Inventory | null>(null)
@@ -914,6 +916,25 @@ export default function InventoryEditorPage() {
           </div>
         </div>
 
+        {/* Tabs */}
+        <div className="flex rounded-xl bg-[#141210] border border-[#332c20] p-1">
+          {(['checklist', 'photos'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              style={{ touchAction: 'manipulation', minHeight: '40px' }}
+              className={`flex-1 rounded-lg text-sm font-medium transition-colors ${
+                tab === t ? 'bg-[#262018] text-[#f5f0e8]' : 'text-[#7c6f54] hover:text-[#a89d84]'
+              }`}
+            >
+              {t === 'checklist' ? 'Checklist' : 'Photos'}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'photos' && <PhotosTab inventory={inventory} />}
+
+        {tab === 'checklist' && (<>
         {/* Item counter */}
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-gold-400">{ticked} items ticked</span>
@@ -958,6 +979,7 @@ export default function InventoryEditorPage() {
             <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform mx-0.5 ${inventory.include_meter_reading ? 'translate-x-5' : 'translate-x-0'}`} />
           </button>
         </div>
+        </>)}
       </div>
 
       <AddAreaSheet

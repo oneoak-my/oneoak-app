@@ -85,7 +85,7 @@ export default function InventoryListPage() {
 
   async function handleDelete(id: string, e: React.MouseEvent) {
     e.stopPropagation()
-    if (!confirm('Delete this inventory list?')) return
+    if (!confirm('Delete this inventory list and all its photos?')) return
     setDeletingId(id)
     try {
       await deleteInventory(id)

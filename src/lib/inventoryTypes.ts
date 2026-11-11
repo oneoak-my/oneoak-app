@@ -24,3 +24,23 @@ export interface Inventory {
   created_at: string
   updated_at: string
 }
+
+export interface InventoryPhotoSection {
+  id: string
+  inventory_id: string
+  name: string
+  sort_order: number
+  created_at: string
+}
+
+export interface InventoryPhoto {
+  id: string
+  section_id: string
+  inventory_id: string
+  storage_path: string
+  width: number | null
+  height: number | null
+  size_bytes: number | null
+  sort_order: number
+  created_at: string
+}
