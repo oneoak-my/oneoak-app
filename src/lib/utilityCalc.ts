@@ -18,43 +18,43 @@ export class UtilityCalcError extends Error {
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-function parseLocalDate(dateStr: string): Date {
+export function parseLocalDate(dateStr: string): Date {
   const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number)
   if (!y || !m || !d) throw new UtilityCalcError(`Invalid date "${dateStr}" (expected YYYY-MM-DD)`)
   return new Date(y, m - 1, d)
 }
 
-function toYmd(d: Date): string {
+export function toYmd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 /** Normalised 'YYYY-MM-DD' so string comparison is date comparison. */
-function ymd(dateStr: string): string {
+export function ymd(dateStr: string): string {
   return toYmd(parseLocalDate(dateStr))
 }
 
-function firstOfMonth(dateStr: string): string {
+export function firstOfMonth(dateStr: string): string {
   const d = parseLocalDate(dateStr)
   return toYmd(new Date(d.getFullYear(), d.getMonth(), 1))
 }
 
-function lastOfMonth(dateStr: string): string {
+export function lastOfMonth(dateStr: string): string {
   const d = parseLocalDate(dateStr)
   return toYmd(new Date(d.getFullYear(), d.getMonth() + 1, 0))
 }
 
-function monthLabel(dateStr: string): string {
+export function monthLabel(dateStr: string): string {
   const d = parseLocalDate(dateStr)
   return `${MONTHS[d.getMonth()]} ${d.getFullYear()}`
 }
 
-function dayLabel(dateStr: string): string {
+export function dayLabel(dateStr: string): string {
   const d = parseLocalDate(dateStr)
   return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`
 }
 
 /** "Sep 2026" for a calendar month, otherwise "15 Aug 2026 – 14 Sep 2026". */
-function periodLabel(start: string, end: string): string {
+export function periodLabel(start: string, end: string): string {
   if (ymd(start) === firstOfMonth(start) && ymd(end) === lastOfMonth(start)) return monthLabel(start)
   return `${dayLabel(start)} – ${dayLabel(end)}`
 }
@@ -99,6 +99,7 @@ export type WaterRow = {
 }
 
 export type WaterPeriod = { start: string; end: string; outstanding: number }
+export type WaterNetting = { label: string; invoices: number; paid: number }
 
 const WATER_RATE = 3.83 // RM per m³ above the minimum charge
 
@@ -107,7 +108,7 @@ const WATER_RATE = 3.83 // RM per m³ above the minimum charge
  * once (e.g. a re-issued bill), payments on one invoice offset the other:
  * outstanding = max(0, Σ outstanding − Σ paid). A single invoice keeps its printed outstanding.
  */
-export function netWaterRows(rows: WaterRow[]): { periods: WaterPeriod[]; notes: string[] } {
+export function netWaterRows(rows: WaterRow[]): { periods: WaterPeriod[]; notes: string[]; netted: WaterNetting[] } {
   const groups = new Map<string, WaterRow[]>()
   for (const r of rows) {
     const key = `${ymd(r.periodStart)}|${ymd(r.periodEnd)}`
@@ -118,6 +119,7 @@ export function netWaterRows(rows: WaterRow[]): { periods: WaterPeriod[]; notes:
 
   const periods: WaterPeriod[] = []
   const notes: string[] = []
+  const netted: WaterNetting[] = []
   const keys = Array.from(groups.keys()).sort()
   for (const key of keys) {
     const g = groups.get(key)!
@@ -131,8 +133,9 @@ export function netWaterRows(rows: WaterRow[]): { periods: WaterPeriod[]; notes:
     const netC = Math.max(0, outC - paidC)
     periods.push({ start, end, outstanding: fromCents(netC) })
     notes.push(`${periodLabel(start, end)}: ${g.length} invoices, ${rmCents(paidC)} already paid netted off`)
+    netted.push({ label: periodLabel(start, end), invoices: g.length, paid: fromCents(paidC) })
   }
-  return { periods, notes }
+  return { periods, notes, netted }
 }
 
 /** Bill for metered usage: minimum charge, or usage × RM 3.83 above the minimum band. */
@@ -149,15 +152,23 @@ export function waterCheckIn(args: {
   rows: WaterRow[]
   moveInDate: string
   dualKey: boolean
-}): { amount: number; steps: string[] } {
+}): {
+  amount: number
+  steps: string[]
+  included: WaterPeriod[]
+  netted: WaterNetting[]
+  addition: number
+} {
   const { rows, moveInDate, dualKey } = args
   const monthStart = firstOfMonth(moveInDate)
-  const { periods, notes } = netWaterRows(rows)
+  const { periods, notes, netted } = netWaterRows(rows)
   const steps: string[] = [...notes]
+  const included: WaterPeriod[] = []
 
   let totalC = 0
   for (const p of periods) {
     if (p.end < monthStart && p.outstanding !== 0) {
+      included.push(p)
       totalC += toCents(p.outstanding)
       steps.push(`${periodLabel(p.start, p.end)} outstanding: ${rm(p.outstanding)}`)
     }
@@ -165,8 +176,10 @@ export function waterCheckIn(args: {
   steps.push(`Outstanding before ${monthLabel(moveInDate)}: ${rmCents(totalC)}`)
 
   const day = parseLocalDate(moveInDate).getDate()
+  let addition = 0
   if (day >= 14) {
     const half = dualKey ? 6 : 12
+    addition = half
     totalC += toCents(half)
     steps.push(`Move-in on day ${day} (≥ 14): add ${rm(half)}${dualKey ? ' (dual-key)' : ''}`)
   } else {
@@ -174,7 +187,7 @@ export function waterCheckIn(args: {
   }
 
   steps.push(`Total: ${rmCents(totalC)}`)
-  return { amount: fromCents(totalC), steps }
+  return { amount: fromCents(totalC), steps, included, netted, addition }
 }
 
 /**
@@ -188,17 +201,27 @@ export function waterCheckOut(args: {
   dualKey: boolean
   latestInvoice?: { periodEnd: string; currentReading: number }
   photoReading?: number
-}): { amount: number; steps: string[]; warnings: string[] } {
+}): {
+  amount: number
+  steps: string[]
+  warnings: string[]
+  included: WaterPeriod[]
+  netted: WaterNetting[]
+  extra: { usage: number; bill: number } | null
+} {
   const { rows, tenancyStart, moveOutDate, dualKey, latestInvoice, photoReading } = args
   const start = ymd(tenancyStart)
   const out = ymd(moveOutDate)
-  const { periods, notes } = netWaterRows(rows)
+  const { periods, notes, netted } = netWaterRows(rows)
   const steps: string[] = [...notes]
   const warnings: string[] = []
+  const included: WaterPeriod[] = []
+  let extra: { usage: number; bill: number } | null = null
 
   let totalC = 0
   for (const p of periods) {
     if (p.end >= start && p.start <= out && p.outstanding !== 0) {
+      included.push(p)
       totalC += toCents(p.outstanding)
       steps.push(`${periodLabel(p.start, p.end)} outstanding: ${rm(p.outstanding)}`)
     }
@@ -223,6 +246,7 @@ export function waterCheckOut(args: {
       )
     }
     const bill = waterBill(usage, dualKey)
+    extra = { usage, bill }
     totalC += toCents(bill)
     steps.push(
       `Usage since invoice ending ${dayLabel(latestInvoice.periodEnd)}: ${photoReading} − ${latestInvoice.currentReading} = ${usage} m³`,
@@ -235,7 +259,7 @@ export function waterCheckOut(args: {
   }
 
   steps.push(`Total: ${rmCents(totalC)}`)
-  return { amount: fromCents(totalC), steps, warnings }
+  return { amount: fromCents(totalC), steps, warnings, included, netted, extra }
 }
 
 // ══ ELECTRICITY (YNH Utility) ═════════════════════════════════════════════════

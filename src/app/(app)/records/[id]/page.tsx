@@ -26,6 +26,7 @@ import Modal from '@/components/ui/Modal'
 import Input, { Select, Textarea } from '@/components/ui/Input'
 import EmptyState from '@/components/ui/EmptyState'
 import TaskSection from '@/components/tasks/TaskSection'
+import UtilityStatements from '@/components/utility/UtilityStatements'
 
 // ── Renewal helpers ───────────────────────────────────────────────────────────
 
@@ -882,6 +883,9 @@ export default function RecordDetailPage() {
 
       {/* Tasks (non-renewal only) */}
       {record.type !== 'renewal' && <TaskSection record={record} />}
+
+      {/* Utility statements (Ooak Residence / Ooak Suites check-in & check-out only) */}
+      <UtilityStatements record={record} providers={providers} onApplied={load} />
 
       {/* Services (non-renewal only) */}
       {record.type !== 'renewal' && <div>
