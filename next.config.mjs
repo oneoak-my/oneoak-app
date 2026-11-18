@@ -10,6 +10,11 @@ const nextConfig = {
       },
     ],
   },
+  webpack: (config) => {
+    // pdfjs-dist has an optional Node-only require('canvas') that never runs in the browser.
+    config.resolve.alias = { ...config.resolve.alias, canvas: false }
+    return config
+  },
 }
 
 export default nextConfig

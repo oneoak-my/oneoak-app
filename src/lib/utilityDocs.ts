@@ -1,7 +1,6 @@
-// Utility statements: document types read by /api/read-utility, clean-up of the
-// model's JSON, and the pure "plan" that turns recognised documents into the
-// water / electricity calculations from utilityCalc.ts. No UI, no network.
-// The model only extracts; every number below is computed here in code.
+// Utility statements: document types (as parsed in the browser by utilityParsers.ts),
+// and the pure "plan" that turns recognised documents into the water / electricity
+// calculations from utilityCalc.ts. No UI, no network, no AI.
 
 import {
   type ElecInvoice,
@@ -56,35 +55,52 @@ export const DOC_TYPE_LABELS: Record<UtilityDocType, string> = {
   unknown: 'Not recognised',
 }
 
-export type WaterStatementData = { unitNo: string | null; statementDate: string | null; rows: WaterRow[] }
+export type WaterStatementRow = WaterRow & { invoiceDate: string | null }
+export type WaterStatementData = {
+  unitNo: string | null
+  statementDate: string | null
+  rows: WaterStatementRow[]
+  /** Printed outstanding total from the "Total Record(s)" line. */
+  printedTotal: number | null
+}
 export type WaterInvoiceData = {
   unitNo: string | null
   invoiceNo: string | null
+  invoiceDate: string | null
   periodStart: string | null
   periodEnd: string | null
   total: number | null
   previousReading: number | null
   currentReading: number | null
+  consumedUnits: number | null
 }
-export type MeterPhotoData = { reading: number | null; confidence: 'high' | 'low'; dateStamp: string | null }
+/** Photos are attachments only (never read); the reading is typed. */
+export type MeterPhotoData = Record<string, never>
 export type YnhInvoiceData = {
   unitNo: string | null
+  invoiceNo: string | null
+  invoiceDate: string | null
   periodStart: string | null
   periodEnd: string | null
   previousReading: number | null
   currentReading: number | null
+  kwh: number | null
   rates: { energy: number | null; capacity: number | null; network: number | null; eei: number | null; afa: number | null }
   retailCharge: number | null
+  /** Fraction: 0.016 for 1.60% */
   rePct: number | null
-  outstandingBF: number | null
+  outstanding: number | null
+  /** Section D "Payable Amount": this month's charges only. */
   currentCharges: number | null
-  payable: number | null
+  /** Top-block "Payable Amount": outstanding + current charges. */
+  payableTotal: number | null
 }
+export type YnhStatementRow = ElecLedgerRow & { date: string | null; tranNo: string | null }
 export type YnhStatementData = {
   unitNo: string | null
   statementDate: string | null
-  rows: ElecLedgerRow[]
-  total: number | null
+  rows: YnhStatementRow[]
+  printedTotal: number | null
 }
 
 export type UtilityDoc =
@@ -95,147 +111,72 @@ export type UtilityDoc =
   | { type: 'ynh_statement'; data: YnhStatementData }
   | { type: 'unknown'; data: Record<string, never> }
 
-/** Per-file result returned by /api/read-utility. */
-export type UtilityReadResult = (UtilityDoc & { warning?: string }) | { error: string }
-
-// ── Clean-up of model output ──────────────────────────────────────────────────
-
-/** "1,234.50", "RM 12.00", "(1.05)", "-0.75" → number; anything else → null. */
-export function toNum(v: unknown): number | null {
-  if (typeof v === 'number') return Number.isFinite(v) ? v : null
-  if (typeof v !== 'string') return null
-  const t = v.trim()
-  if (!t) return null
-  const negative = /^\(.*\)$/.test(t) || /^-/.test(t) || /-$/.test(t) || /\bCR\b/i.test(t)
-  const digits = t.replace(/[^0-9.]/g, '')
-  if (!digits || digits === '.') return null
-  const n = Number(digits)
-  if (!Number.isFinite(n)) return null
-  return negative ? -n : n
-}
-
-/** Accepts 'YYYY-MM-DD' (or an ISO timestamp) only; returns null otherwise. */
-export function toDate(v: unknown): string | null {
-  if (typeof v !== 'string') return null
-  const m = v.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
-  if (!m) return null
-  const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3])
-  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null
-  return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-}
-
-function toStr(v: unknown): string | null {
-  if (typeof v === 'number') return String(v)
-  if (typeof v !== 'string') return null
-  const t = v.trim()
-  return t ? t : null
-}
-
-function obj(v: unknown): Record<string, unknown> {
-  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {}
-}
-
-function arr(v: unknown): Record<string, unknown>[] {
-  return Array.isArray(v) ? v.map(obj) : []
-}
-
-const DOC_TYPES: UtilityDocType[] = [
-  'water_statement', 'water_invoice', 'water_meter_photo', 'ynh_invoice', 'ynh_statement', 'unknown',
-]
-
-/** Turns the model's loose JSON into a typed document (dropping unusable rows). */
-export function normalizeDoc(type: unknown, raw: unknown): UtilityDoc {
-  const t = DOC_TYPES.includes(type as UtilityDocType) ? (type as UtilityDocType) : 'unknown'
-  const d = obj(raw)
-  switch (t) {
-    case 'water_statement': {
-      const rows: WaterRow[] = []
-      for (const r of arr(d.rows)) {
-        const periodStart = toDate(r.periodStart)
-        const periodEnd = toDate(r.periodEnd)
-        if (!periodStart || !periodEnd) continue
-        rows.push({
-          invoiceNo: toStr(r.invoiceNo) ?? '',
-          periodStart,
-          periodEnd,
-          amount: toNum(r.amount) ?? 0,
-          paid: Math.abs(toNum(r.paid) ?? 0),
-          outstanding: toNum(r.outstanding) ?? 0,
-        })
-      }
-      return { type: t, data: { unitNo: toStr(d.unitNo), statementDate: toDate(d.statementDate), rows } }
-    }
+/** A blank document of the given type, for typing the numbers in by hand. */
+export function emptyDoc(type: UtilityDocType): UtilityDoc {
+  switch (type) {
+    case 'water_statement':
+      return { type, data: { unitNo: null, statementDate: null, rows: [], printedTotal: null } }
     case 'water_invoice':
       return {
-        type: t,
+        type,
         data: {
-          unitNo: toStr(d.unitNo),
-          invoiceNo: toStr(d.invoiceNo),
-          periodStart: toDate(d.periodStart),
-          periodEnd: toDate(d.periodEnd),
-          total: toNum(d.total),
-          previousReading: toNum(d.previousReading),
-          currentReading: toNum(d.currentReading),
+          unitNo: null, invoiceNo: null, invoiceDate: null, periodStart: null, periodEnd: null,
+          total: null, previousReading: null, currentReading: null, consumedUnits: null,
         },
       }
-    case 'water_meter_photo': {
-      const reading = toNum(d.reading)
+    case 'ynh_invoice':
       return {
-        type: t,
+        type,
         data: {
-          reading: reading == null ? null : Math.floor(Math.abs(reading)),
-          confidence: d.confidence === 'high' ? 'high' : 'low',
-          dateStamp: toDate(d.dateStamp),
+          unitNo: null, invoiceNo: null, invoiceDate: null, periodStart: null, periodEnd: null,
+          previousReading: null, currentReading: null, kwh: null,
+          rates: { energy: null, capacity: null, network: null, eei: null, afa: null },
+          retailCharge: null, rePct: null, outstanding: null, currentCharges: null, payableTotal: null,
         },
       }
-    }
-    case 'ynh_invoice': {
-      const rates = obj(d.rates)
-      const eei = toNum(rates.eei)
-      return {
-        type: t,
-        data: {
-          unitNo: toStr(d.unitNo),
-          periodStart: toDate(d.periodStart),
-          periodEnd: toDate(d.periodEnd),
-          previousReading: toNum(d.previousReading),
-          currentReading: toNum(d.currentReading),
-          rates: {
-            energy: toNum(rates.energy),
-            capacity: toNum(rates.capacity),
-            network: toNum(rates.network),
-            eei: eei == null ? null : -Math.abs(eei),
-            afa: toNum(rates.afa),
-          },
-          retailCharge: toNum(d.retailCharge),
-          rePct: normalizeRePct(toNum(d.rePct)),
-          outstandingBF: toNum(d.outstandingBF),
-          currentCharges: toNum(d.currentCharges),
-          payable: toNum(d.payable),
-        },
-      }
-    }
-    case 'ynh_statement': {
-      const rows: ElecLedgerRow[] = []
-      for (const r of arr(d.rows)) {
-        const outstanding = toNum(r.outstanding)
-        if (outstanding == null) continue
-        rows.push({ periodStart: toDate(r.periodStart), periodEnd: toDate(r.periodEnd), outstanding })
-      }
-      return {
-        type: t,
-        data: { unitNo: toStr(d.unitNo), statementDate: toDate(d.statementDate), rows, total: toNum(d.total) },
-      }
-    }
+    case 'ynh_statement':
+      return { type, data: { unitNo: null, statementDate: null, rows: [], printedTotal: null } }
+    case 'water_meter_photo':
+      return { type, data: {} }
     default:
       return { type: 'unknown', data: {} }
   }
 }
 
-/** "1.60%" may come back as 1.6 or 0.016: always return the fraction. */
-function normalizeRePct(v: number | null): number | null {
-  if (v == null) return null
-  return v > 0.5 ? v / 100 : v
+/** Fields the calculation needs that are still empty (shown as warnings + editable fields). */
+export function missingFields(doc: UtilityDoc): string[] {
+  const m: string[] = []
+  const need = (v: unknown, name: string) => { if (v == null || v === '') m.push(name) }
+  switch (doc.type) {
+    case 'water_statement':
+      need(doc.data.unitNo, 'unit')
+      if (!doc.data.rows.length) m.push('statement rows')
+      break
+    case 'water_invoice':
+      need(doc.data.unitNo, 'unit')
+      need(doc.data.periodEnd, 'period end')
+      need(doc.data.currentReading, 'current reading')
+      break
+    case 'ynh_invoice': {
+      const d = doc.data
+      need(d.unitNo, 'unit')
+      need(d.periodStart, 'period start')
+      need(d.periodEnd, 'period end')
+      need(d.currentReading, 'current reading')
+      need(d.rates.energy, 'energy rate')
+      need(d.rates.capacity, 'capacity rate')
+      need(d.rates.network, 'network rate')
+      need(d.rates.afa, 'AFA rate')
+      need(d.retailCharge, 'retail charge')
+      need(d.rePct, 'RE %')
+      need(d.payableTotal, 'payable amount (total)')
+      break
+    }
+    case 'ynh_statement':
+      need(doc.data.unitNo, 'unit')
+      break
+  }
+  return m
 }
 
 // ── Unit matching ─────────────────────────────────────────────────────────────
@@ -249,7 +190,7 @@ function unitSegments(u: string): string {
     .join('-')
 }
 
-/** "A-27-09", "A-27-9", "a 27 09" and "A2709" all match. */
+/** "A-27-09", "A-27-9", "a 27 09", "A2709" match; so do "A-35-05A" and "A-35-5a". */
 export function unitsMatch(a: string, b: string): boolean {
   if (unitSegments(a) === unitSegments(b)) return true
   const flat = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, '')
@@ -274,9 +215,7 @@ export function docPeriod(doc: UtilityDoc): string {
     case 'ynh_invoice':
       return doc.data.periodStart && doc.data.periodEnd ? periodLabel(doc.data.periodStart, doc.data.periodEnd) : 'period not found'
     case 'water_meter_photo':
-      return doc.data.reading == null
-        ? 'reading not found'
-        : `${doc.data.reading} m³${doc.data.dateStamp ? ` · ${dayLabel(doc.data.dateStamp)}` : ''}`
+      return 'attached only (type the reading below)'
     default:
       return ''
   }
@@ -297,7 +236,7 @@ export type PlanInput = {
   docs: PlanDoc[]
   elecReading: number | null
   elecReadingDate: string
-  /** Check-out water: the (possibly hand-corrected) meter photo reading. */
+  /** Check-out water: the typed water meter reading (m³). */
   photoReading: number | null
 }
 
@@ -317,7 +256,7 @@ export type Plan = {
   warnings: string[]
   /** Doc ids left out of the calculation (unit mismatch). */
   excluded: string[]
-  /** Chosen photo for the check-out reading box. */
+  /** Attached meter photo (shown beside the typed reading). */
   photoDocId: string | null
 }
 
@@ -378,9 +317,10 @@ function toElecInvoice(d: YnhInvoiceData): { invoice: ElecInvoice } | { missing:
     },
     retailCharge: need(d.retailCharge, 'retail charge'),
     rePct: need(d.rePct, 'RE %'),
-    outstandingBF: d.outstandingBF ?? 0,
+    outstandingBF: d.outstanding ?? 0,
     currentCharges: d.currentCharges ?? 0,
-    payable: need(d.payable, 'amount payable'),
+    // Everything owed up to the invoice's period end = the top-block payable (outstanding + current).
+    payable: need(d.payableTotal, 'payable amount (total)'),
   }
   return missing.length ? { missing } : { invoice }
 }
@@ -423,14 +363,15 @@ export function buildPlan(input: PlanInput): Plan {
 
   const wStatement = pick('water_statement', (d) => d.data.statementDate ?? d.data.rows.map((r) => r.periodEnd).sort().pop() ?? null)
   const wInvoice = pick('water_invoice', (d) => d.data.periodEnd)
-  const wPhoto = pick('water_meter_photo', (d) => d.data.dateStamp)
+  const wPhoto = pick('water_meter_photo', () => null)
   const yInvoice = pick('ynh_invoice', (d) => d.data.periodEnd)
   const yStatement = pick('ynh_statement', (d) => d.data.statementDate)
 
   // ── Water ──
   let water: UtilityOutcome = null
   if (wStatement || wInvoice || wPhoto) {
-    const rows = wStatement?.doc.data.rows ?? []
+    // Rows typed by hand count once both period dates are filled in.
+    const rows = (wStatement?.doc.data.rows ?? []).filter((r) => r.periodStart && r.periodEnd)
     for (const r of rows) {
       if (r.amount > HIGH_USAGE_M3 * WATER_RATE) {
         warnings.push(`Water ${periodLabel(r.periodStart, r.periodEnd)}: ${rmStr(r.amount)} means over ${HIGH_USAGE_M3} m³ that month, please check`)
@@ -444,10 +385,19 @@ export function buildPlan(input: PlanInput): Plan {
       }
     }
 
+    if (wStatement && wStatement.doc.data.printedTotal != null && rows.length) {
+      const sumC = rows.reduce((s, r) => s + Math.round(r.outstanding * 100), 0)
+      if (sumC !== Math.round(wStatement.doc.data.printedTotal * 100)) {
+        warnings.push(
+          `Water statement rows add up to ${rmStr(sumC / 100)} but the printed total is ${rmStr(wStatement.doc.data.printedTotal)}: check the rows`,
+        )
+      }
+    }
+
     if (!wStatement) {
-      water = { error: 'Water statement needed (the management statement listing every invoice)' }
+      water = { error: 'Add the water statement (the management statement listing every invoice)' }
     } else if (!rows.length) {
-      water = { error: 'No rows could be read from the water statement' }
+      water = { error: 'No rows read from the water statement: add them in the statement rows table' }
     } else if (isCheckIn) {
       try {
         const r = waterCheckIn({ rows, moveInDate: eventDate, dualKey })
@@ -482,9 +432,6 @@ export function buildPlan(input: PlanInput): Plan {
           ? { periodEnd: inv.periodEnd, currentReading: inv.currentReading }
           : undefined
         const photoReading = input.photoReading ?? undefined
-        if (wPhoto && wPhoto.doc.data.confidence === 'low') {
-          warnings.push('Water meter photo reading is low confidence: check the number against the photo')
-        }
         try {
           const r = waterCheckOut({ rows, tenancyStart: start, moveOutDate: eventDate, dualKey, latestInvoice, photoReading })
           warnings.push(...r.warnings)
@@ -499,8 +446,13 @@ export function buildPlan(input: PlanInput): Plan {
           if (r.extra) note += ` + ${monthLabel(eventDate)} pro-rated ${rmStr(r.extra.bill)} (${r.extra.usage} m3)`
           water = { amount: r.amount, steps: r.steps, note, slots: [wStatement.id, wInvoice?.id ?? null, wPhoto?.id ?? null] }
         } catch (e) {
-          const msg = errMsg(e)
+          let msg = errMsg(e)
           if (/below/.test(msg)) warnings.push(`Water: negative usage. ${msg}`)
+          if (/required/.test(msg)) {
+            msg = photoReading == null
+              ? `No bill covers ${monthLabel(eventDate)} yet: type the water meter reading (m³)`
+              : `No bill covers ${monthLabel(eventDate)} yet: add the latest water invoice (for its current reading)`
+          }
           water = { error: msg }
         }
       }
@@ -512,11 +464,11 @@ export function buildPlan(input: PlanInput): Plan {
   if (yInvoice || yStatement) {
     const ledger = yStatement?.doc.data.rows
     if (!yInvoice) {
-      elec = { error: 'YNH invoice needed (it has the rates and the last meter reading)' }
+      elec = { error: 'Add the YNH invoice (it has the rates and the last meter reading)' }
     } else {
       const conv = toElecInvoice(yInvoice.doc.data)
       if ('missing' in conv) {
-        elec = { error: `YNH invoice: could not read ${conv.missing.join(', ')}` }
+        elec = { error: `YNH invoice: fill in ${conv.missing.join(', ')}` }
       } else {
         const invoice = conv.invoice
         if (ledger && ledger.length && !ledger.some((r) => r.periodEnd === invoice.periodEnd)) {
@@ -526,7 +478,7 @@ export function buildPlan(input: PlanInput): Plan {
         const readingDate = input.elecReadingDate
         try {
           if (isCheckIn) {
-            if (reading == null) throw new UtilityCalcError('Enter the electricity meter reading (kWh)')
+            if (reading == null) throw new UtilityCalcError('Type the electricity meter reading (kWh)')
             const r = elecCheckIn({ invoice, ledger, moveInDate: eventDate, readingAsOf: reading })
             warnings.push(...r.warnings)
             const upTo = ledger
