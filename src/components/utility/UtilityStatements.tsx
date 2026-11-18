@@ -12,7 +12,7 @@ import type { PaymentBy, PropertyRecord, ServiceProvider, Unit } from '@/lib/typ
 import { formatDate } from '@/lib/utils'
 import {
   DOC_TYPE_LABELS, ELEC_PROVIDER, ELEC_SERVICE, MAX_UTILITY_FILES, MAX_UTILITY_FILE_BYTES, UTILITY_BUILDINGS,
-  WATER_SERVICE, buildPlan, docPeriod, docUnit, emptyDoc, missingFields, waterProviderFor,
+  WATER_SERVICE, buildPlan, docPeriod, docUnit, emptyDoc, missingFields, unitsMatch, waterProviderFor,
   type UtilityDoc, type UtilityDocType, type UtilityOutcome,
   type WaterInvoiceData, type WaterStatementData, type YnhInvoiceData, type YnhStatementData,
 } from '@/lib/utilityDocs'
@@ -33,6 +33,8 @@ type Item = {
   doc: UtilityDoc
   parseWarnings: string[]
   editing: boolean
+  /** Include despite a unit mismatch. */
+  useAnyway: boolean
 }
 
 const SELECTABLE_TYPES: UtilityDocType[] = ['water_statement', 'water_invoice', 'water_meter_photo', 'ynh_invoice', 'ynh_statement', 'unknown']
@@ -111,7 +113,7 @@ function UtilityStatementsCard({
       const isImage = f.type.startsWith('image/')
       const base: Item = {
         id, name: f.name, file: f, previewUrl: null, lines: null, status: 'reading',
-        doc: emptyDoc('unknown'), parseWarnings: [], editing: false,
+        doc: emptyDoc('unknown'), parseWarnings: [], editing: false, useAnyway: false,
       }
       if ((!isPdf && !isImage) || f.size > MAX_UTILITY_FILE_BYTES) {
         setItems((prev) => [...prev, {
@@ -165,7 +167,7 @@ function UtilityStatementsCard({
   }
 
   const docs = useMemo(
-    () => items.filter((i) => i.status === 'done').map((i) => ({ id: i.id, name: i.name, doc: i.doc })),
+    () => items.filter((i) => i.status === 'done').map((i) => ({ id: i.id, name: i.name, doc: i.doc, useAnyway: i.useAnyway })),
     [items],
   )
   const numOrNull = (s: string) => (s.trim() === '' || Number.isNaN(Number(s)) ? null : Number(s))
@@ -301,6 +303,8 @@ function UtilityStatementsCard({
               key={i.id}
               item={i}
               excluded={plan.excluded.includes(i.id)}
+              recordUnit={unit.unit_number}
+              onUseAnyway={(v) => patch(i.id, { useAnyway: v })}
               onType={(t) => changeType(i.id, t)}
               onToggle={() => patch(i.id, { editing: !i.editing })}
               onRemove={() => removeItem(i.id)}
@@ -391,10 +395,12 @@ function UtilityStatementsCard({
 // ── File row with type selector and editable fields ──────────────────────────
 
 function FileRow({
-  item, excluded, onType, onToggle, onRemove, onEdit,
+  item, excluded, recordUnit, onUseAnyway, onType, onToggle, onRemove, onEdit,
 }: {
   item: Item
   excluded: boolean
+  recordUnit: string
+  onUseAnyway: (v: boolean) => void
   onType: (t: UtilityDocType) => void
   onToggle: () => void
   onRemove: () => void
@@ -427,7 +433,24 @@ function FileRow({
           <p className="text-[11px] text-[#7c6f54] truncate">
             {item.status === 'reading' ? 'Reading…' : [u ? `Unit ${u}` : null, docPeriod(doc), item.name].filter(Boolean).join(' · ')}
           </p>
-          {excluded && <p className="text-[11px] text-orange-300">Unit does not match this record: not used</p>}
+          {excluded && (
+            <p className="flex flex-wrap items-center gap-x-2 text-[11px] text-orange-300">
+              <span>Unit {u} does not match {recordUnit}: not used</span>
+              <button type="button" onClick={() => onUseAnyway(true)}
+                className="font-semibold text-gold-400 hover:text-gold-300 underline underline-offset-2">
+                Use anyway
+              </button>
+            </p>
+          )}
+          {item.useAnyway && u && !unitsMatch(u, recordUnit) && (
+            <p className="flex flex-wrap items-center gap-x-2 text-[11px] text-orange-300">
+              <span>Unit {u} does not match {recordUnit}: used anyway</span>
+              <button type="button" onClick={() => onUseAnyway(false)}
+                className="font-semibold text-gold-400 hover:text-gold-300 underline underline-offset-2">
+                Undo
+              </button>
+            </p>
+          )}
           {[...item.parseWarnings, ...(missing.length ? [`Missing: ${missing.join(', ')}`] : [])].map((w, k) => (
             <p key={k} className="text-[11px] text-orange-300">{w}</p>
           ))}

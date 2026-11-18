@@ -181,20 +181,45 @@ export function missingFields(doc: UtilityDoc): string[] {
 
 // ── Unit matching ─────────────────────────────────────────────────────────────
 
-function unitSegments(u: string): string {
-  return u
+// A unit code anywhere in a string: "A-35-05A", "A-23A-3A", "T2-16-7", "B-7-7", "17-09", "A2709".
+// Bounded by start/end or a non-alphanumeric character (no lookbehind: older iOS Safari rejects it).
+const UNIT_CODE_RE =
+  /(?:^|[^A-Za-z0-9])((?:[A-Za-z]{1,2}\d{0,2}-?)?\d{1,3}[A-Za-z]?-\d{1,3}[A-Za-z]?|[A-Za-z]{1,2}\d{3,6}[A-Za-z]?)(?=$|[^A-Za-z0-9])/
+
+/** The bare unit code as printed, e.g. "A-35-05A Ooak Residence" → "A-35-05A". */
+function unitCode(str: string): string | null {
+  return str.match(UNIT_CODE_RE)?.[1] ?? null
+}
+
+/**
+ * Canonical unit code: extracted from any string (building names and extra words ignored),
+ * uppercased, leading zeros removed from each segment. "A-35-05A Ooak Residence" → "A-35-5A",
+ * "B-07-07" → "B-7-7", "01-10" → "1-10". Returns null if no unit code is found.
+ */
+export function normaliseUnit(str: string | null | undefined): string | null {
+  const code = str ? unitCode(str) : null
+  if (!code) return null
+  return code
     .toUpperCase()
-    .split(/[^A-Z0-9]+/)
+    .split('-')
     .filter(Boolean)
     .map((seg) => seg.replace(/^0+(?=[0-9A-Z])/, ''))
     .join('-')
 }
 
-/** "A-27-09", "A-27-9", "a 27 09", "A2709" match; so do "A-35-05A" and "A-35-5a". */
+/** "A-35-05A" matches "A-35-5a Ooak Residence"; "A2709" also matches "A-27-09". */
 export function unitsMatch(a: string, b: string): boolean {
-  if (unitSegments(a) === unitSegments(b)) return true
-  const flat = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, '')
-  return flat(a) === flat(b)
+  const na = normaliseUnit(a)
+  const nb = normaliseUnit(b)
+  if (na && nb) {
+    if (na === nb) return true
+    // Same characters, different dashes (e.g. "A2709" vs "A-27-09").
+    const flat = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, '')
+    return flat(unitCode(a)!) === flat(unitCode(b)!)
+  }
+  // No recognisable code on one side: fall back to comparing the whole strings loosely.
+  const loose = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, '')
+  return loose(a) === loose(b)
 }
 
 export function docUnit(doc: UtilityDoc): string | null {
@@ -223,7 +248,13 @@ export function docPeriod(doc: UtilityDoc): string {
 
 // ── Plan: documents → calculations ────────────────────────────────────────────
 
-export type PlanDoc = { id: string; name: string; doc: UtilityDoc }
+export type PlanDoc = {
+  id: string
+  name: string
+  doc: UtilityDoc
+  /** "Use anyway": include the document despite a unit mismatch. */
+  useAnyway?: boolean
+}
 
 export type PlanInput = {
   recordType: 'checkin' | 'checkout'
@@ -340,9 +371,13 @@ export function buildPlan(input: PlanInput): Plan {
     }
     const u = docUnit(d.doc)
     if (u && !unitsMatch(u, unitNo)) {
-      warnings.push(`${d.name}: unit ${u} does not match ${unitNo}, not used`)
-      excluded.push(d.id)
-      continue
+      if (d.useAnyway) {
+        warnings.push(`${d.name}: unit ${u} does not match ${unitNo}, used anyway as you chose`)
+      } else {
+        warnings.push(`${d.name}: unit ${u} does not match ${unitNo}, not used`)
+        excluded.push(d.id)
+        continue
+      }
     }
     if (!u && d.doc.type !== 'water_meter_photo') {
       warnings.push(`${d.name}: no unit number found on the document, please check it is for ${unitNo}`)
