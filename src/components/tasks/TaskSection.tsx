@@ -7,12 +7,13 @@ import type { PropertyRecord, Task, TaskCategory, TaskStatus } from '@/lib/types
 import { OPTIONAL_TASK_LISTS } from '@/lib/taskTemplates'
 import type { OptionalTaskList } from '@/lib/taskTemplates'
 import Button from '@/components/ui/Button'
-import { METER_TASK_TITLES, buildMeterEmail, formatSendDay, meterRequestForRecord, todayYmd } from '@/lib/meterEmail'
+import { METER_TASK_TITLES, buildMeterEmail, formatSendDay, isMobileDevice, meterRequestForRecord, todayYmd } from '@/lib/meterEmail'
 
 interface MeterInfo {
   sendLabel: string
   overdue: boolean
   gmailUrl: string
+  mailtoUrl: string
 }
 
 const STATUS_CYCLE: TaskStatus[] = ['Open', 'In Progress', 'Completed']
@@ -104,10 +105,12 @@ export default function TaskSection({ record }: { record: PropertyRecord }) {
     const { requestDate: computed, time } = meterRequestForRecord(record)
     const sendDate = task.due_date ?? computed
     const unit = record.unit ?? { building: '', unit_number: '' }
+    const email = buildMeterEmail(record, unit)
     return {
       sendLabel: `Send ${formatSendDay(sendDate)}, ${time}`,
       overdue: task.status !== 'Completed' && sendDate < todayYmd(),
-      gmailUrl: buildMeterEmail(record, unit).gmailUrl,
+      gmailUrl: email.gmailUrl,
+      mailtoUrl: email.mailtoUrl,
     }
   }
 
@@ -307,7 +310,11 @@ function TaskRow({
           size="sm"
           icon={<Mail size={13} />}
           className="shrink-0 !px-2.5 !py-1.5"
-          onClick={() => window.open(meter.gmailUrl, '_blank', 'noopener,noreferrer')}
+          onClick={() => {
+            // Phones: open the native mail app in place (a new tab would be blank).
+            if (isMobileDevice()) window.location.href = meter.mailtoUrl
+            else window.open(meter.gmailUrl, '_blank', 'noopener,noreferrer')
+          }}
         >
           Draft email
         </Button>

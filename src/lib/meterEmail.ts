@@ -18,9 +18,14 @@ export const BUILDING_EMAILS: Record<string, string[]> = {
 
 export const GMAIL_ACCOUNT = 'ad.oneoak@gmail.com'
 
-// Gmail appends the signature automatically; flip to true to add one in the body.
-export const INCLUDE_SIGNATURE = false
-const SIGNATURE = 'Best regards,\nOne Oak'
+// Gmail does not add the signature to pre-filled compose links, so it goes in the body.
+export const INCLUDE_SIGNATURE = true
+export const SIGNATURE = [
+  'Best Regards,',
+  'Elleen | Business Operations | Corporate Leasing',
+  'One Oak Group | Reapfield Properties (HQ) | KW Malaysia',
+  'Mobile +60 16 7000 669 Email ad.oneoak@gmail.com',
+].join('\n')
 
 // Default task titles that carry the meter-reading request.
 export const METER_TASK_TITLES: Partial<Record<RecordType, string>> = {
@@ -98,7 +103,7 @@ export function meterRequestForRecord(record: Pick<PropertyRecord, 'type' | 'dat
 export function buildMeterEmail(
   record: Pick<PropertyRecord, 'type' | 'date' | 'move_in_date'>,
   unit: Pick<Unit, 'building' | 'unit_number'>,
-): { to: string[]; subject: string; body: string; gmailUrl: string } {
+): { to: string[]; subject: string; body: string; gmailUrl: string; mailtoUrl: string } {
   const { requestDate } = meterRequestForRecord(record)
   const date = formatAsOf(requestDate)
   const u = unit.unit_number
@@ -153,5 +158,19 @@ export function buildMeterEmail(
     '&su=' + encodeURIComponent(subject) +
     '&body=' + encodeURIComponent(body)
 
-  return { to, subject, body, gmailUrl }
+  // Phones: hand off to the native mail app. CRLF line breaks per RFC 6068.
+  const mailtoUrl =
+    'mailto:' + to.join(',') +
+    '?subject=' + encodeURIComponent(subject) +
+    '&body=' + encodeURIComponent(body.replace(/\n/g, '\r\n'))
+
+  return { to, subject, body, gmailUrl, mailtoUrl }
+}
+
+/** True on phones/tablets, including iPads that report a Mac user agent. */
+export function isMobileDevice(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent
+  if (/iPhone|iPad|iPod|Android/i.test(ua)) return true
+  return ua.includes('Macintosh') && navigator.maxTouchPoints > 1
 }
