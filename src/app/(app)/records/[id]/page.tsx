@@ -10,7 +10,7 @@ import {
   getRecord, updateRecord, deleteRecord,
   createService, updateService, deleteService,
   getServiceProviders, getServiceDescriptions, uploadInvoice, createServiceProvider,
-  markReportGenerated, extractError,
+  markReportGenerated, extractError, authJsonHeaders,
 } from '@/lib/api'
 import { supabase } from '@/lib/supabase'
 import type { PropertyRecord, Service, ServiceProvider, ServiceDescription, RecordType, PaymentBy } from '@/lib/types'
@@ -1496,7 +1496,7 @@ landlord_name, landlord_id, tenant_name, tenant_id, unit_full_address, original_
 Use YYYY-MM-DD format for all dates. Use null for any field not found.`
       const res = await fetch('/api/read-document', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authJsonHeaders(),
         body: JSON.stringify({ base64, mimeType: file.type || 'image/jpeg', prompt }),
       })
       if (!res.ok) throw new Error(await res.text())

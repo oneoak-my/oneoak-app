@@ -10,7 +10,7 @@ import { getUnit, createRecord, updateUnit, deleteUnit, extractError } from '@/l
 import type { Unit, PropertyRecord, UnitStatusTag, BadgeVariant, RecordType } from '@/lib/types'
 import { BUILDINGS, LISTER_OPTIONS, RECORD_TYPE_LABELS, UTILITY_OPTIONS, ALL_UNIT_TAGS, UNIT_TAG_STYLES } from '@/lib/types'
 import { formatDate, formatCurrency } from '@/lib/utils'
-import { UnitTagBadges } from '@/components/ui/Badge'
+import Badge, { UnitTagBadges } from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
 import Modal from '@/components/ui/Modal'
@@ -175,7 +175,10 @@ export default function UnitDetailPage() {
 
       {/* Unit header */}
       <div>
-        <h1 className="text-2xl font-bold text-[#f5f0e8] mb-1">{unit.unit_number}</h1>
+        <div className="flex items-center gap-2 mb-1">
+          <h1 className="text-2xl font-bold text-[#f5f0e8]">{unit.unit_number}</h1>
+          {unit.dual_key && <Badge variant="gray">Dual-key</Badge>}
+        </div>
         <p className="text-sm text-[#7c6f54] mb-1">{unit.building}</p>
         {unit.lister && (
           <p className="text-xs text-[#5c5040] mb-1">Lister: {unit.lister}</p>
@@ -808,6 +811,7 @@ function EditUnitModal({
   const [unitNumber, setUnitNumber] = useState(unit.unit_number)
   const [lister, setLister] = useState(unit.lister ?? '')
   const [notes, setNotes] = useState(unit.notes ?? '')
+  const [dualKey, setDualKey] = useState(unit.dual_key ?? false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -822,6 +826,7 @@ function EditUnitModal({
         unit_number: unitNumber.trim(),
         lister: lister || null,
         notes: notes.trim() || null,
+        dual_key: dualKey,
       })
       onSaved()
     } catch (err: unknown) {
@@ -857,6 +862,15 @@ function EditUnitModal({
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
         />
+        <label className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[#262018] border border-[#332c20] cursor-pointer">
+          <input
+            type="checkbox"
+            checked={dualKey}
+            onChange={(e) => setDualKey(e.target.checked)}
+            className="h-4 w-4 shrink-0 accent-gold-500 cursor-pointer"
+          />
+          <span className="text-sm text-[#f5f0e8]">Dual-key unit</span>
+        </label>
         {error && <p className="text-sm text-red-400">{error}</p>}
         <div className="flex gap-3 pt-2">
           <Button variant="secondary" type="button" fullWidth onClick={onClose}>Cancel</Button>

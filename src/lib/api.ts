@@ -18,6 +18,14 @@ export function extractError(err: unknown): string {
   return String(err)
 }
 
+// Headers for calls to our own API routes: JSON + the current session's access token.
+export async function authJsonHeaders(): Promise<Record<string, string>> {
+  const { data: { session } } = await supabase.auth.getSession()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`
+  return headers
+}
+
 // Quick connectivity + schema check
 export async function testConnection(): Promise<{ ok: boolean; error?: string }> {
   const { error } = await supabase.from('units').select('id').limit(1)

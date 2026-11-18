@@ -83,6 +83,7 @@ export interface Unit {
   notes: string | null
   status: UnitStatusTag[]
   lister: string | null
+  dual_key: boolean
   created_by: string | null
   updated_by: string | null
   created_at: string

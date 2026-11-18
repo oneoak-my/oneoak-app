@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { requireUser } from '@/lib/apiAuth'
 
 export async function POST(request: Request) {
+  const auth = await requireUser(request)
+  if (auth instanceof NextResponse) return auth
+
   try {
     const { base64, mimeType, prompt: customPrompt } = await request.json()
     if (!base64 || !mimeType) {

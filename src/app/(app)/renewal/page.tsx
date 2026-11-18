@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { MessageCircle, RefreshCw, LogOut, X, Upload, FileText, Check, CalendarDays } from 'lucide-react'
-import { getRenewalRecords, updateRecord, createRecord, createRenewal } from '@/lib/api'
+import { getRenewalRecords, updateRecord, createRecord, createRenewal, authJsonHeaders } from '@/lib/api'
 import type { PropertyRecord, Unit } from '@/lib/types'
 import { LISTER_OPTIONS } from '@/lib/types'
 import Modal from '@/components/ui/Modal'
@@ -291,7 +291,7 @@ function RenewalModal({
       const base64 = await fileToBase64(file)
       const res = await fetch('/api/read-document', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authJsonHeaders(),
         body: JSON.stringify({ base64, mimeType: file.type || 'image/jpeg' }),
       })
       if (!res.ok) throw new Error(await res.text())
