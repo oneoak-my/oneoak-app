@@ -29,14 +29,46 @@ export function groupItemsIntoLines(items: PdfTextItem[]): string[] {
   })
 }
 
-/** Extracts the text of every page as lines. Returns [] for scanned (image-only) PDFs. */
-export async function extractPdfLines(data: ArrayBuffer): Promise<string[]> {
+async function openPdf(data: ArrayBuffer) {
   const pdfjs = await import('pdfjs-dist')
   if (!pdfjs.GlobalWorkerOptions.workerSrc) {
     pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.js', import.meta.url).toString()
   }
   // isEvalSupported: false closes the font-eval hole in pdf.js 3.x (CVE-2024-4367).
-  const doc = await pdfjs.getDocument({ data, isEvalSupported: false }).promise
+  return pdfjs.getDocument({ data, isEvalSupported: false }).promise
+}
+
+/**
+ * Renders the first pages to canvases (for OCR of PDFs without a text layer).
+ * Pass a fresh ArrayBuffer: pdf.js takes ownership of the one it is given.
+ */
+export async function renderPdfPages(data: ArrayBuffer, scale = 2, maxPages = 3): Promise<HTMLCanvasElement[]> {
+  const doc = await openPdf(data)
+  try {
+    const canvases: HTMLCanvasElement[] = []
+    for (let p = 1; p <= Math.min(doc.numPages, maxPages); p++) {
+      const page = await doc.getPage(p)
+      const viewport = page.getViewport({ scale })
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.ceil(viewport.width)
+      canvas.height = Math.ceil(viewport.height)
+      const ctx = canvas.getContext('2d')
+      if (!ctx) throw new Error('Canvas not supported')
+      ctx.fillStyle = '#fff'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      await page.render({ canvasContext: ctx, viewport }).promise
+      canvases.push(canvas)
+      page.cleanup()
+    }
+    return canvases
+  } finally {
+    await doc.destroy()
+  }
+}
+
+/** Extracts the text of every page as lines. Returns [] for scanned (image-only) PDFs. */
+export async function extractPdfLines(data: ArrayBuffer): Promise<string[]> {
+  const doc = await openPdf(data)
   try {
     const lines: string[] = []
     for (let p = 1; p <= doc.numPages; p++) {

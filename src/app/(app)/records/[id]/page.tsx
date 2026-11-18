@@ -27,6 +27,7 @@ import Input, { Select, Textarea } from '@/components/ui/Input'
 import EmptyState from '@/components/ui/EmptyState'
 import TaskSection from '@/components/tasks/TaskSection'
 import UtilityStatements from '@/components/utility/UtilityStatements'
+import ContractorUpload from '@/components/services/ContractorUpload'
 
 // ── Renewal helpers ───────────────────────────────────────────────────────────
 
@@ -887,8 +888,8 @@ export default function RecordDetailPage() {
       {/* Utility statements (Ooak Residence / Ooak Suites check-in & check-out only) */}
       <UtilityStatements record={record} providers={providers} onApplied={load} />
 
-      {/* Services (non-renewal only) */}
-      {record.type !== 'renewal' && <div>
+      {/* Services (all record types) */}
+      <div>
         <div className="flex items-center justify-between mb-3">
           <p className="text-xs font-semibold text-[#7c6f54] uppercase tracking-wider">
             Services ({services.length})
@@ -902,6 +903,14 @@ export default function RecordDetailPage() {
             Add
           </Button>
         </div>
+
+        <ContractorUpload
+          record={record}
+          services={services}
+          providers={providers}
+          descriptions={descriptions}
+          onAdded={load}
+        />
 
         {services.length === 0 ? (
           <EmptyState
@@ -926,7 +935,7 @@ export default function RecordDetailPage() {
             ))}
           </div>
         )}
-      </div>}
+      </div>
 
       {/* Modals */}
       <ServiceModal

@@ -25,18 +25,20 @@ async function decode(file: File): Promise<ImageBitmap | HTMLImageElement> {
 // One decode at a time: full-size phone photos are ~50 MB as bitmaps.
 let chain: Promise<unknown> = Promise.resolve()
 
-export function compressImage(file: File): Promise<CompressedImage> {
-  const run = chain.then(() => compressNow(file))
+export interface CompressOptions { maxEdge?: number; quality?: number }
+
+export function compressImage(file: File, opts: CompressOptions = {}): Promise<CompressedImage> {
+  const run = chain.then(() => compressNow(file, opts.maxEdge ?? MAX_EDGE, opts.quality ?? JPEG_QUALITY))
   chain = run.catch(() => undefined)
   return run
 }
 
-async function compressNow(file: File): Promise<CompressedImage> {
+async function compressNow(file: File, maxEdge: number, quality: number): Promise<CompressedImage> {
   const src = await decode(file)
   const sw = 'naturalWidth' in src ? src.naturalWidth : src.width
   const sh = 'naturalHeight' in src ? src.naturalHeight : src.height
   if (!sw || !sh) throw new Error('Could not read image')
-  const scale = Math.min(1, MAX_EDGE / Math.max(sw, sh))
+  const scale = Math.min(1, maxEdge / Math.max(sw, sh))
   const width = Math.max(1, Math.round(sw * scale))
   const height = Math.max(1, Math.round(sh * scale))
 
@@ -52,7 +54,7 @@ async function compressNow(file: File): Promise<CompressedImage> {
   ctx.drawImage(src, 0, 0, width, height)
   if ('close' in src) src.close()
 
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', JPEG_QUALITY))
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality))
   canvas.width = 0
   canvas.height = 0
   if (!blob) throw new Error('JPEG export failed')

@@ -181,15 +181,17 @@ export function missingFields(doc: UtilityDoc): string[] {
 
 // ── Unit matching ─────────────────────────────────────────────────────────────
 
-// A unit code anywhere in a string: "A-35-05A", "A-23A-3A", "T2-16-7", "B-7-7", "17-09", "A2709".
+// A unit code anywhere in a string: "A-35-05A", "A-23A-3A", "T2-16-7", "B-7-7", "17-09", "A2709",
+// and Cuci Clan's spaced style "A 26-06" / "B 21-3a" (block letter, space, floor-unit).
 // Bounded by start/end or a non-alphanumeric character (no lookbehind: older iOS Safari rejects it).
 const UNIT_CODE_RE =
-  /(?:^|[^A-Za-z0-9])((?:[A-Za-z]{1,2}\d{0,2}-?)?\d{1,3}[A-Za-z]?-\d{1,3}[A-Za-z]?|[A-Za-z]{1,2}\d{3,6}[A-Za-z]?)(?=$|[^A-Za-z0-9])/
+  /(?:^|[^A-Za-z0-9])((?:[A-Za-z]{1,2}\d{0,2}[- ]?)?\d{1,3}[A-Za-z]?-\d{1,3}[A-Za-z]?|[A-Za-z]{1,2}\d{3,6}[A-Za-z]?)(?=$|[^A-Za-z0-9])/
 
-/** The bare unit code as printed, e.g. "A-35-05A Ooak Residence" → "A-35-05A". */
-function unitCode(str: string): string | null {
+/** The bare unit code as printed, e.g. "A-35-05A Ooak Residence" → "A-35-05A", "A 26-06 The Oak" → "A 26-06". */
+export function findUnitCode(str: string): string | null {
   return str.match(UNIT_CODE_RE)?.[1] ?? null
 }
+const unitCode = findUnitCode
 
 /**
  * Canonical unit code: extracted from any string (building names and extra words ignored),
@@ -201,7 +203,7 @@ export function normaliseUnit(str: string | null | undefined): string | null {
   if (!code) return null
   return code
     .toUpperCase()
-    .split('-')
+    .split(/[- ]/)
     .filter(Boolean)
     .map((seg) => seg.replace(/^0+(?=[0-9A-Z])/, ''))
     .join('-')
