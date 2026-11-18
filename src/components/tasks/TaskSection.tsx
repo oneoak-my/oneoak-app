@@ -1,11 +1,19 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Trash2, ChevronDown, ChevronUp, Plus, Loader2 } from 'lucide-react'
+import { Trash2, ChevronDown, ChevronUp, Plus, Loader2, Mail } from 'lucide-react'
 import { getTasks, createTask, updateTask, deleteTask, createDefaultTasks } from '@/lib/api'
 import type { PropertyRecord, Task, TaskCategory, TaskStatus } from '@/lib/types'
 import { OPTIONAL_TASK_LISTS } from '@/lib/taskTemplates'
 import type { OptionalTaskList } from '@/lib/taskTemplates'
+import Button from '@/components/ui/Button'
+import { METER_TASK_TITLES, buildMeterEmail, formatSendDay, meterRequestForRecord, todayYmd } from '@/lib/meterEmail'
+
+interface MeterInfo {
+  sendLabel: string
+  overdue: boolean
+  gmailUrl: string
+}
 
 const STATUS_CYCLE: TaskStatus[] = ['Open', 'In Progress', 'Completed']
 const PAYMENT_CYCLE: TaskStatus[] = ['Open', 'Invoice Sent', 'Partially Paid', 'Fully Paid']
@@ -46,7 +54,7 @@ export default function TaskSection({ record }: { record: PropertyRecord }) {
         // Record pre-dates the task system (or createDefaultTasks failed on
         // creation). Seed defaults now, then re-fetch.
         console.log(`[TaskSection] No tasks found — seeding defaults for type="${record.type}"`)
-        await createDefaultTasks(record.id, record.type)
+        await createDefaultTasks(record.id, record.type, record)
         data = await getTasks(record.id)
         console.log(`[TaskSection] After seeding: ${data.length} tasks`)
       } else if (
@@ -77,7 +85,8 @@ export default function TaskSection({ record }: { record: PropertyRecord }) {
     } finally {
       setLoading(false)
     }
-  }, [record.id, record.type])   // Bug 1 fix: record.type was missing from deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [record.id, record.type, record.date, record.move_in_date])   // dates: reload so the meter task's due date refreshes after an edit
 
   useEffect(() => { load() }, [load])
 
@@ -87,6 +96,20 @@ export default function TaskSection({ record }: { record: PropertyRecord }) {
   const progress = tasks.length > 0 ? completedCount / tasks.length : 0
   const addedTitles = new Set(optionalTasks.map((t) => t.title))
   const optionalLists = OPTIONAL_TASK_LISTS[record.type] ?? []
+
+  // Meter-reading request task: planned send time + Gmail draft link.
+  const meterTitle = METER_TASK_TITLES[record.type]
+  function meterInfoFor(task: Task): MeterInfo | undefined {
+    if (!meterTitle || task.title !== meterTitle || task.is_optional || !record.date) return undefined
+    const { requestDate: computed, time } = meterRequestForRecord(record)
+    const sendDate = task.due_date ?? computed
+    const unit = record.unit ?? { building: '', unit_number: '' }
+    return {
+      sendLabel: `Send ${formatSendDay(sendDate)}, ${time}`,
+      overdue: task.status !== 'Completed' && sendDate < todayYmd(),
+      gmailUrl: buildMeterEmail(record, unit).gmailUrl,
+    }
+  }
 
   // Cycle status with optimistic update + revert on error
   async function cycleStatus(task: Task) {
@@ -184,6 +207,7 @@ export default function TaskSection({ record }: { record: PropertyRecord }) {
               key={task.id}
               task={task}
               onCycle={cycleStatus}
+              meter={meterInfoFor(task)}
               showDivider={i < defaultTasks.length - 1 || optionalTasks.length > 0}
             />
           ))}
@@ -243,11 +267,13 @@ function TaskRow({
   task,
   onCycle,
   onDelete,
+  meter,
   showDivider,
 }: {
   task: Task
   onCycle: (t: Task) => void
   onDelete?: () => void
+  meter?: MeterInfo
   showDivider: boolean
 }) {
   const isDone = task.status === 'Completed' || task.status === 'Fully Paid'
@@ -262,10 +288,30 @@ function TaskRow({
         {STATUS_LABEL[task.status] ?? task.status}
       </button>
 
-      {/* Title */}
-      <span className={`flex-1 text-sm leading-snug ${isDone ? 'line-through text-[#4a4030]' : 'text-[#f5f0e8]'}`}>
-        {task.title}
-      </span>
+      {/* Title (+ planned send time for the meter-reading request) */}
+      <div className="flex-1 min-w-0">
+        <span className={`block text-sm leading-snug ${isDone ? 'line-through text-[#4a4030]' : 'text-[#f5f0e8]'}`}>
+          {task.title}
+        </span>
+        {meter && (
+          <span className={`block text-[11px] mt-0.5 ${meter.overdue ? 'text-red-400 font-medium' : 'text-[#7c6f54]'}`}>
+            {meter.sendLabel}
+          </span>
+        )}
+      </div>
+
+      {/* Gmail draft (meter-reading request only) */}
+      {meter && (
+        <Button
+          variant="outline"
+          size="sm"
+          icon={<Mail size={13} />}
+          className="shrink-0 !px-2.5 !py-1.5"
+          onClick={() => window.open(meter.gmailUrl, '_blank', 'noopener,noreferrer')}
+        >
+          Draft email
+        </Button>
+      )}
 
       {/* Delete (optional tasks only) */}
       {onDelete && (

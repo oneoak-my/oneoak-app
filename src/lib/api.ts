@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import type { Unit, PropertyRecord, Service, ServiceProvider, ServiceDescription, RecordType, UnitStatusTag, Task, RecordWithTasks } from './types'
 import { DEFAULT_TASK_TEMPLATES } from './taskTemplates'
+import { METER_TASK_TITLES, meterRequestForRecord } from './meterEmail'
 
 async function getCurrentUserEmail(): Promise<string> {
   const { data: { user } } = await supabase.auth.getUser()
@@ -132,7 +133,7 @@ export async function createRecord(record: Partial<PropertyRecord>): Promise<Pro
   }
 
   console.log(`[API] createRecord succeeded: ${data.id}, type=${data.type}. Creating default tasks…`)
-  await createDefaultTasks(data.id, data.type as RecordType)
+  await createDefaultTasks(data.id, data.type as RecordType, data)
 
   return data
 }
@@ -196,9 +197,19 @@ async function swapUnitTag(unitId: string, remove: UnitStatusTag, add: UnitStatu
 
 // ── Default task creation ────────────────────────────────
 
-export async function createDefaultTasks(recordId: string, recordType: RecordType): Promise<void> {
+export async function createDefaultTasks(
+  recordId: string,
+  recordType: RecordType,
+  record?: Pick<PropertyRecord, 'date' | 'move_in_date'>,
+): Promise<void> {
   const templates = DEFAULT_TASK_TEMPLATES[recordType]
   if (!templates?.length) return
+
+  // The meter-reading request task gets its planned send date as due_date.
+  const meterTitle = METER_TASK_TITLES[recordType]
+  const meterDue = meterTitle && record?.date
+    ? meterRequestForRecord({ type: recordType, date: record.date, move_in_date: record.move_in_date }).requestDate
+    : null
 
   const { data: existing } = await supabase
     .from('tasks')
@@ -224,7 +235,7 @@ export async function createDefaultTasks(recordId: string, recordType: RecordTyp
       is_optional: false,
       status: 'Open' as Task['status'],
       sort_order: t.sort_order,
-      due_date: null,
+      due_date: t.title === meterTitle ? meterDue : null,
       notes: null,
     }))
   ).select()
@@ -271,7 +282,25 @@ export async function updateRecord(id: string, updates: Partial<PropertyRecord>)
     .select()
     .single()
   if (error) throw error
+  if ('date' in updates || 'move_in_date' in updates) {
+    await syncMeterTaskDueDate(data as PropertyRecord)
+  }
   return data
+}
+
+// Keep the meter-reading task's due_date in step with the record's (move-in) date.
+// Completed tasks are left alone.
+async function syncMeterTaskDueDate(record: PropertyRecord): Promise<void> {
+  const title = METER_TASK_TITLES[record.type]
+  if (!title || !record.date) return
+  const { requestDate } = meterRequestForRecord(record)
+  const { error } = await supabase
+    .from('tasks')
+    .update({ due_date: requestDate, updated_at: new Date().toISOString() })
+    .eq('record_id', record.id)
+    .eq('title', title)
+    .neq('status', 'Completed')
+  if (error) console.error('[Tasks] syncMeterTaskDueDate error:', error)
 }
 
 export async function deleteRecord(id: string): Promise<void> {
