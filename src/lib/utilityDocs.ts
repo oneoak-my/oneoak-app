@@ -5,6 +5,8 @@
 import {
   type ElecInvoice,
   type ElecLedgerRow,
+  type ElecProRate,
+  type ElecRates,
   type WaterRow,
   UtilityCalcError,
   dayLabel,
@@ -256,7 +258,12 @@ export type PlanDoc = {
   doc: UtilityDoc
   /** "Use anyway": include the document despite a unit mismatch. */
   useAnyway?: boolean
+  /** "Use anyway": use this YNH invoice although it is not for the month before the reading. */
+  useInvoiceAnyway?: boolean
 }
+
+/** Hand-edited rates (anything left undefined comes from the matched invoice). */
+export type RateOverrides = Partial<Pick<ElecRates, 'energy' | 'capacity' | 'network' | 'afa'>> & { retailCharge?: number }
 
 export type PlanInput = {
   recordType: 'checkin' | 'checkout'
@@ -271,6 +278,25 @@ export type PlanInput = {
   elecReadingDate: string
   /** Check-out water: the typed water meter reading (m³). */
   photoReading: number | null
+  /** Electricity rates edited by hand (default: the matched invoice's rates). */
+  rateOverrides?: RateOverrides
+}
+
+/** Everything the pro-rate PDF shows; the figures are utilityCalc's own (no second formula). */
+export type ElecProRateDetails = {
+  isCheckIn: boolean
+  /** Move-in / move-out date. */
+  eventDate: string
+  readingDate: string
+  currentReading: number
+  previousReading: number
+  /** The matched invoice's period end (date of the previous reading). */
+  previousDate: string
+  invoicePeriodLabel: string
+  rates: ElecRates
+  retailCharge: number
+  rePct: number
+  stub: ElecProRate
 }
 
 export type UtilityPlan = {
@@ -279,6 +305,8 @@ export type UtilityPlan = {
   note: string
   /** Doc ids per invoice slot (1..3); null = keep whatever is in that slot. */
   slots: (string | null)[]
+  /** Electricity only: the pro-rated usage, for the pro-rate PDF. */
+  proRate?: ElecProRateDetails
 }
 
 export type UtilityOutcome = UtilityPlan | { error: string; steps?: string[] } | null
@@ -291,6 +319,21 @@ export type Plan = {
   excluded: string[]
   /** Attached meter photo (shown beside the typed reading). */
   photoDocId: string | null
+  /** The YNH invoice used for rates and the previous reading (as printed, before any hand edits). */
+  elecInvoice: {
+    docId: string
+    periodLabel: string
+    monthLabel: string
+    periodEnd: string
+    currentReading: number | null
+    rates: YnhInvoiceData['rates']
+    retailCharge: number | null
+    rePct: number | null
+  } | null
+  /** Month the YNH invoice must be for: the month before the reading date, e.g. "Oct 2026". */
+  expectedInvoiceMonth: string
+  /** YNH invoices for another month: shown with a warning and a "Use anyway" button. */
+  invoiceMonthIssues: { docId: string; message: string; usedAnyway: boolean }[]
 }
 
 const rmStr = (n: number) => `RM ${n.toFixed(2)}`
@@ -401,7 +444,28 @@ export function buildPlan(input: PlanInput): Plan {
   const wStatement = pick('water_statement', (d) => d.data.statementDate ?? d.data.rows.map((r) => r.periodEnd).sort().pop() ?? null)
   const wInvoice = pick('water_invoice', (d) => d.data.periodEnd)
   const wPhoto = pick('water_meter_photo', () => null)
-  const yInvoice = pick('ynh_invoice', (d) => d.data.periodEnd)
+  // YNH invoice rule: it must be for the month BEFORE the meter reading date
+  // (reading 14 Nov 2026 → invoice period Oct 2026). Others are not used unless "Use anyway".
+  const expectedEnd = dayBefore(firstOfMonth(input.elecReadingDate || eventDate))
+  const expectedInvoiceMonth = monthLabel(expectedEnd)
+  const yInvoices = ofType('ynh_invoice')
+  const invoiceMonthIssues: Plan['invoiceMonthIssues'] = []
+  const byEnd = (d: (typeof yInvoices)[number]) => d.doc.data.periodEnd
+  let yInvoice: (typeof yInvoices)[number] | null = null
+  const matching = yInvoices.filter((d) => d.doc.data.periodEnd && firstOfMonth(d.doc.data.periodEnd) === firstOfMonth(expectedEnd))
+  if (matching.length) {
+    yInvoice = latestBy(matching, byEnd)
+  } else {
+    for (const d of yInvoices) {
+      const actual = d.doc.data.periodEnd ? monthLabel(d.doc.data.periodEnd) : 'an unknown month'
+      const message =
+        `Latest invoice should be for ${expectedInvoiceMonth} (the month before the reading date); the uploaded invoice is for ${actual}`
+      invoiceMonthIssues.push({ docId: d.id, message, usedAnyway: !!d.useInvoiceAnyway })
+      warnings.push(d.useInvoiceAnyway ? `${d.name}: invoice for ${actual} used anyway (expected ${expectedInvoiceMonth})` : `${d.name}: ${message}`)
+    }
+    const forced = yInvoices.filter((d) => d.useInvoiceAnyway)
+    if (forced.length) yInvoice = latestBy(forced, byEnd)
+  }
   const yStatement = pick('ynh_statement', (d) => d.data.statementDate)
 
   // ── Water ──
@@ -498,16 +562,59 @@ export function buildPlan(input: PlanInput): Plan {
 
   // ── Electricity ──
   let elec: UtilityOutcome = null
-  if (yInvoice || yStatement) {
+  let elecInvoice: Plan['elecInvoice'] = null
+  if (yInvoices.length || yStatement) {
     const ledger = yStatement?.doc.data.rows
+    if (yInvoice) {
+      const d = yInvoice.doc.data
+      elecInvoice = {
+        docId: yInvoice.id,
+        periodLabel: d.periodStart && d.periodEnd ? periodLabel(d.periodStart, d.periodEnd) : 'period not read',
+        monthLabel: d.periodEnd ? monthLabel(d.periodEnd) : '',
+        periodEnd: d.periodEnd ?? '',
+        currentReading: d.currentReading,
+        rates: d.rates,
+        retailCharge: d.retailCharge,
+        rePct: d.rePct,
+      }
+    }
     if (!yInvoice) {
-      elec = { error: 'Add the YNH invoice (it has the rates and the last meter reading)' }
+      elec = {
+        error: yInvoices.length
+          ? `Add the YNH invoice for ${expectedInvoiceMonth} (or press "Use anyway" on the one uploaded)`
+          : 'Add the YNH invoice (it has the rates and the last meter reading)',
+      }
     } else {
       const conv = toElecInvoice(yInvoice.doc.data)
       if ('missing' in conv) {
         elec = { error: `YNH invoice: fill in ${conv.missing.join(', ')}` }
       } else {
-        const invoice = conv.invoice
+        // Rates always come from the matched invoice; hand edits (if any) override single values. EEI is ignored in the calc.
+        const ov = input.rateOverrides ?? {}
+        const invoice: ElecInvoice = {
+          ...conv.invoice,
+          rates: {
+            ...conv.invoice.rates,
+            ...(ov.energy != null ? { energy: ov.energy } : {}),
+            ...(ov.capacity != null ? { capacity: ov.capacity } : {}),
+            ...(ov.network != null ? { network: ov.network } : {}),
+            ...(ov.afa != null ? { afa: ov.afa } : {}),
+          },
+          retailCharge: ov.retailCharge ?? conv.invoice.retailCharge,
+        }
+        const details = (stub: ElecProRate): ElecProRateDetails => ({
+          isCheckIn,
+          eventDate,
+          readingDate: input.elecReadingDate,
+          currentReading: input.elecReading!,
+          previousReading: invoice.currentReading,
+          previousDate: invoice.periodEnd,
+          invoicePeriodLabel: periodLabel(invoice.periodStart, invoice.periodEnd),
+          rates: { ...invoice.rates, eei: 0 },
+          retailCharge: invoice.retailCharge,
+          rePct: invoice.rePct,
+          stub,
+        })
         if (ledger && ledger.length && !ledger.some((r) => r.periodEnd === invoice.periodEnd)) {
           warnings.push(`YNH invoice period (${periodLabel(invoice.periodStart, invoice.periodEnd)}) is not on the YNH statement`)
         }
@@ -524,7 +631,7 @@ export function buildPlan(input: PlanInput): Plan {
             const note =
               `Outstanding to ${upTo} ${rmStr(r.before)} + pro-rated ${rangeLabel(dayAfter(invoice.periodEnd), readingDate)} ` +
               `${rmStr(r.stub.total)} (${r.stub.kwh} kWh)`
-            elec = { amount: r.amount, steps: r.steps, note, slots: [yInvoice.id, yStatement?.id ?? null, null] }
+            elec = { amount: r.amount, steps: r.steps, note, slots: [yInvoice.id, yStatement?.id ?? null, null], proRate: details(r.stub) }
           } else {
             const start = input.tenancyStart
             if (!start && ledger) {
@@ -546,7 +653,10 @@ export function buildPlan(input: PlanInput): Plan {
             if (r.stub) {
               note += ` + pro-rated ${rangeLabel(dayAfter(invoice.periodEnd), readingDate)} ${rmStr(r.stub.total)} (${r.stub.kwh} kWh)`
             }
-            elec = { amount: r.amount, steps: r.steps, note, slots: [yInvoice.id, yStatement?.id ?? null, null] }
+            elec = {
+              amount: r.amount, steps: r.steps, note, slots: [yInvoice.id, yStatement?.id ?? null, null],
+              ...(r.stub ? { proRate: details(r.stub) } : {}),
+            }
           }
         } catch (e) {
           const msg = errMsg(e)
@@ -557,5 +667,5 @@ export function buildPlan(input: PlanInput): Plan {
     }
   }
 
-  return { water, elec, warnings, excluded, photoDocId: wPhoto?.id ?? null }
+  return { water, elec, warnings, excluded, photoDocId: wPhoto?.id ?? null, elecInvoice, expectedInvoiceMonth, invoiceMonthIssues }
 }

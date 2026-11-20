@@ -8,12 +8,13 @@ import {
 import { compressImage } from '@/lib/imageCompress'
 import { computeMeterRequest, meterBaseDate } from '@/lib/meterEmail'
 import { extractPdfLines } from '@/lib/pdfText'
+import { buildProRatePdf, proRateFileName, proRateSlot, withNameTag } from '@/lib/proRatePdf'
 import type { PaymentBy, PropertyRecord, ServiceProvider, Unit } from '@/lib/types'
 import { formatDate } from '@/lib/utils'
 import {
   DOC_TYPE_LABELS, ELEC_PROVIDER, ELEC_SERVICE, MAX_UTILITY_FILES, MAX_UTILITY_FILE_BYTES, UTILITY_BUILDINGS,
   WATER_SERVICE, buildPlan, docPeriod, docUnit, emptyDoc, missingFields, unitsMatch, waterProviderFor,
-  type UtilityDoc, type UtilityDocType, type UtilityOutcome,
+  type ElecProRateDetails, type RateOverrides, type UtilityDoc, type UtilityDocType, type UtilityOutcome,
   type WaterInvoiceData, type WaterStatementData, type YnhInvoiceData, type YnhStatementData,
 } from '@/lib/utilityDocs'
 import { parseAs, parseUtilityText } from '@/lib/utilityParsers'
@@ -35,6 +36,8 @@ type Item = {
   editing: boolean
   /** Include despite a unit mismatch. */
   useAnyway: boolean
+  /** Use this YNH invoice although it is not for the month before the reading. */
+  useInvoiceAnyway: boolean
 }
 
 const SELECTABLE_TYPES: UtilityDocType[] = ['water_statement', 'water_invoice', 'water_meter_photo', 'ynh_invoice', 'ynh_statement', 'unknown']
@@ -80,6 +83,8 @@ function UtilityStatementsCard({
   const [elecReading, setElecReading] = useState('')
   const [waterReading, setWaterReading] = useState('')
   const [tenancyStart, setTenancyStart] = useState(record.tenancy_start_date ?? '')
+  const [rateOverrides, setRateOverrides] = useState<RateOverrides>({})
+  const [editingRates, setEditingRates] = useState(false)
   const [applying, setApplying] = useState(false)
   const [applyMsg, setApplyMsg] = useState('')
   const [applyErr, setApplyErr] = useState('')
@@ -113,7 +118,7 @@ function UtilityStatementsCard({
       const isImage = f.type.startsWith('image/')
       const base: Item = {
         id, name: f.name, file: f, previewUrl: null, lines: null, status: 'reading',
-        doc: emptyDoc('unknown'), parseWarnings: [], editing: false, useAnyway: false,
+        doc: emptyDoc('unknown'), parseWarnings: [], editing: false, useAnyway: false, useInvoiceAnyway: false,
       }
       if ((!isPdf && !isImage) || f.size > MAX_UTILITY_FILE_BYTES) {
         setItems((prev) => [...prev, {
@@ -167,7 +172,9 @@ function UtilityStatementsCard({
   }
 
   const docs = useMemo(
-    () => items.filter((i) => i.status === 'done').map((i) => ({ id: i.id, name: i.name, doc: i.doc, useAnyway: i.useAnyway })),
+    () => items.filter((i) => i.status === 'done').map((i) => ({
+      id: i.id, name: i.name, doc: i.doc, useAnyway: i.useAnyway, useInvoiceAnyway: i.useInvoiceAnyway,
+    })),
     [items],
   )
   const numOrNull = (s: string) => (s.trim() === '' || Number.isNaN(Number(s)) ? null : Number(s))
@@ -184,8 +191,9 @@ function UtilityStatementsCard({
         elecReading: numOrNull(elecReading),
         elecReadingDate: elecDate || plannedDate,
         photoReading: numOrNull(waterReading),
+        rateOverrides,
       }),
-    [recordType, unit.unit_number, unit.dual_key, eventDate, tenancyStart, docs, elecReading, elecDate, plannedDate, waterReading],
+    [recordType, unit.unit_number, unit.dual_key, eventDate, tenancyStart, docs, elecReading, elecDate, plannedDate, waterReading, rateOverrides],
   )
 
   const photoItem = items.find((i) => i.id === plan.photoDocId)
@@ -197,6 +205,33 @@ function UtilityStatementsCard({
     const found = providers.find((p) => p.name.trim().toLowerCase() === name.toLowerCase())
     if (found) return found.id
     return (await createServiceProvider({ name })).id
+  }
+
+  const proRate: ElecProRateDetails | undefined = plan.elec && !('error' in plan.elec) ? plan.elec.proRate : undefined
+
+  async function proRateFile(d: ElecProRateDetails): Promise<File> {
+    const bytes = await buildProRatePdf(d, { unitNo: unit.unit_number, tenantName: record.tenant_name })
+    return new File([bytes as BlobPart], proRateFileName(unit.unit_number, d.eventDate), { type: 'application/pdf' })
+  }
+
+  function download(file: File) {
+    const url = URL.createObjectURL(file)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = file.name
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  }
+
+  async function downloadProRate() {
+    if (!proRate) return
+    try {
+      download(await proRateFile(proRate))
+    } catch (e) {
+      setApplyErr(`Could not create the pro-rate PDF: ${extractError(e)}`)
+    }
   }
 
   async function apply() {
@@ -244,10 +279,25 @@ function UtilityStatementsCard({
           const item = docId ? items.find((it) => it.id === docId) : undefined
           if (!item) continue
           const url = await uploadInvoice(item.file, serviceId, (i + 1) as 1 | 2 | 3)
-          urls[i] = `${url}?v=${Date.now()}` // same storage path on re-apply: bust the cache
+          // Same storage path on re-apply: bust the cache. The name tag lets us recognise the file later.
+          urls[i] = withNameTag(`${url}?v=${Date.now()}`, item.name)
+        }
+
+        // Electricity: attach the pro-rate calculation PDF (replacing an earlier one, never another file).
+        let proRateNote = ''
+        if (job.statusKey === 'electricity_status' && o.proRate) {
+          const slot = proRateSlot(urls)
+          if (slot == null) {
+            proRateNote = ` (all 3 invoice slots hold other files: pro-rate PDF not attached, use the Pro-rate PDF button to download it)`
+          } else {
+            const pdf = await proRateFile(o.proRate)
+            const url = await uploadInvoice(pdf, serviceId, (slot + 1) as 1 | 2 | 3)
+            urls[slot] = withNameTag(`${url}?v=${Date.now()}`, pdf.name)
+            proRateNote = ', pro-rate PDF attached'
+          }
         }
         await updateService(serviceId, { invoice_url: urls[0], invoice_url_2: urls[1], invoice_url_3: urls[2] })
-        done.push(`${job.description}: ${rm(o.amount)} ${existing ? 'updated' : 'added'}`)
+        done.push(`${job.description}: ${rm(o.amount)} ${existing ? 'updated' : 'added'}${proRateNote}`)
       }
 
       if (Object.keys(statusUpdates).length) await updateRecord(record.id, statusUpdates)
@@ -303,6 +353,8 @@ function UtilityStatementsCard({
               key={i.id}
               item={i}
               excluded={plan.excluded.includes(i.id)}
+              invoiceIssue={plan.invoiceMonthIssues.find((x) => x.docId === i.id) ?? null}
+              onUseInvoiceAnyway={(v) => patch(i.id, { useInvoiceAnyway: v })}
               recordUnit={unit.unit_number}
               onUseAnyway={(v) => patch(i.id, { useAnyway: v })}
               onType={(t) => changeType(i.id, t)}
@@ -327,6 +379,16 @@ function UtilityStatementsCard({
           />
           <Input label="Reading date" type="date" value={elecDate} onChange={(e) => setElecDate(e.target.value)} />
         </div>
+
+        {plan.elecInvoice && (
+          <RatesPanel
+            invoice={plan.elecInvoice}
+            overrides={rateOverrides}
+            editing={editingRates}
+            onToggle={() => setEditingRates((v) => !v)}
+            onChange={setRateOverrides}
+          />
+        )}
 
         {!isCheckIn && (
           <div className="flex items-end gap-3">
@@ -383,6 +445,12 @@ function UtilityStatementsCard({
             </p>
           )}
 
+          {proRate && (
+            <Button variant="outline" size="sm" fullWidth icon={<FileText size={13} />} onClick={downloadProRate}>
+              Pro-rate PDF
+            </Button>
+          )}
+
           <Button variant="primary" fullWidth loading={applying} disabled={busy || (!hasWater && !hasElec)} onClick={apply}>
             Apply to record
           </Button>
@@ -395,10 +463,12 @@ function UtilityStatementsCard({
 // ── File row with type selector and editable fields ──────────────────────────
 
 function FileRow({
-  item, excluded, recordUnit, onUseAnyway, onType, onToggle, onRemove, onEdit,
+  item, excluded, invoiceIssue, onUseInvoiceAnyway, recordUnit, onUseAnyway, onType, onToggle, onRemove, onEdit,
 }: {
   item: Item
   excluded: boolean
+  invoiceIssue: { message: string; usedAnyway: boolean } | null
+  onUseInvoiceAnyway: (v: boolean) => void
   recordUnit: string
   onUseAnyway: (v: boolean) => void
   onType: (t: UtilityDocType) => void
@@ -439,6 +509,15 @@ function FileRow({
               <button type="button" onClick={() => onUseAnyway(true)}
                 className="font-semibold text-gold-400 hover:text-gold-300 underline underline-offset-2">
                 Use anyway
+              </button>
+            </p>
+          )}
+          {invoiceIssue && (
+            <p className="flex flex-wrap items-center gap-x-2 text-[11px] text-orange-300">
+              <span>{invoiceIssue.usedAnyway ? `${invoiceIssue.message}: used anyway` : invoiceIssue.message}</span>
+              <button type="button" onClick={() => onUseInvoiceAnyway(!invoiceIssue.usedAnyway)}
+                className="font-semibold text-gold-400 hover:text-gold-300 underline underline-offset-2">
+                {invoiceIssue.usedAnyway ? 'Undo' : 'Use anyway'}
               </button>
             </p>
           )}
@@ -630,6 +709,81 @@ function DocEditor({ doc, onEdit }: { doc: UtilityDoc; onEdit: (mutate: (doc: Ut
   }
 
   return null
+}
+
+// ── Electricity rates (read-only from the matched invoice; editable on request) ──
+
+type RateKey = 'energy' | 'capacity' | 'network' | 'afa' | 'retailCharge'
+const RATE_FIELDS: { key: RateKey; label: string; digits: number }[] = [
+  { key: 'energy', label: 'Energy', digits: 4 },
+  { key: 'capacity', label: 'Capacity', digits: 4 },
+  { key: 'network', label: 'Network', digits: 4 },
+  { key: 'afa', label: 'AFA', digits: 4 },
+  { key: 'retailCharge', label: 'Retail (RM)', digits: 2 },
+]
+
+function RatesPanel({
+  invoice, overrides, editing, onToggle, onChange,
+}: {
+  invoice: NonNullable<ReturnType<typeof buildPlan>['elecInvoice']>
+  overrides: RateOverrides
+  editing: boolean
+  onToggle: () => void
+  onChange: (o: RateOverrides) => void
+}) {
+  const fromInvoice = (k: RateKey): number | null => (k === 'retailCharge' ? invoice.retailCharge : invoice.rates[k])
+  const used = (k: RateKey) => overrides[k] ?? fromInvoice(k)
+  const differs = RATE_FIELDS.some(({ key }) => overrides[key] != null && overrides[key] !== fromInvoice(key))
+  const fmt = (v: number | null, digits: number) => (v == null ? '—' : v.toFixed(digits))
+  const rePct = invoice.rePct == null ? '—' : `${Math.round(invoice.rePct * 10000) / 100}%`
+
+  return (
+    <div className="rounded-xl border border-[#332c20] bg-[#181410] px-3 py-2.5 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] text-[#a89d84]">
+          Rates from YNH invoice <span className="text-[#f5f0e8]">{invoice.periodLabel}</span>
+        </p>
+        <button type="button" onClick={onToggle} className="text-[11px] font-semibold text-gold-400 hover:text-gold-300">
+          {editing ? 'done' : 'edit'}
+        </button>
+      </div>
+      {!editing ? (
+        <p className="text-[11px] text-[#a89d84] leading-relaxed">
+          {RATE_FIELDS.map(({ key, label, digits }) => `${label} ${fmt(used(key), digits)}`).join(' · ')} · EEI 0 · RE {rePct}
+        </p>
+      ) : (
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+          {RATE_FIELDS.map(({ key, label, digits }) => (
+            <label key={key} className="flex flex-col gap-1 min-w-0">
+              <span className="text-[10px] uppercase tracking-wider text-[#7c6f54]">{label}</span>
+              <input
+                className={fieldCls}
+                inputMode="decimal"
+                defaultValue={used(key) == null ? '' : String(used(key))}
+                placeholder={fmt(fromInvoice(key), digits)}
+                onChange={(e) => {
+                  const t = e.target.value.trim()
+                  const n = t === '' ? undefined : Number(t)
+                  const next = { ...overrides }
+                  if (n == null || !Number.isFinite(n) || n === fromInvoice(key)) delete next[key]
+                  else next[key] = n
+                  onChange(next)
+                }}
+              />
+            </label>
+          ))}
+        </div>
+      )}
+      {differs && (
+        <p className="flex items-center gap-1.5 text-[11px] text-orange-300">
+          <AlertTriangle size={11} className="shrink-0" /> Rate differs from invoice
+          <button type="button" onClick={() => onChange({})} className="ml-1 font-semibold text-gold-400 hover:text-gold-300 underline underline-offset-2">
+            reset
+          </button>
+        </p>
+      )}
+    </div>
+  )
 }
 
 // ── Result ───────────────────────────────────────────────────────────────────
