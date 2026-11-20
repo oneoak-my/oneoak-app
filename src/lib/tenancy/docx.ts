@@ -3,14 +3,14 @@
 // Landlord | Tenant initial box), signing page, THE SCHEDULE, SCHEDULE II.
 
 import type { Document as DocxDocument, Paragraph as DocxParagraph, Table as DocxTable, TextRun as DocxTextRun } from 'docx'
-import type { AgreementModel, BodyItem, Line } from './model'
+import type { AgreementModel, BodyItem, Line, Run } from './model'
 import type { RenderConfig } from './templates'
 
 export async function buildAgreementDocx(model: AgreementModel, cfg: RenderConfig): Promise<DocxDocument> {
   const {
     Document, Paragraph, TextRun, AlignmentType, Table, TableRow, TableCell, WidthType, TableLayoutType,
     BorderStyle, Footer, PageNumber, VerticalAlign, VerticalAlignSection, PageBorderDisplay, PageBorderOffsetFrom,
-    ShadingType, HeightRule, PageBreak, TabStopType,
+    ShadingType, HeightRule, PageBreak, TabStopType, LineRuleType,
   } = await import('docx')
 
   // Original template fonts: body Verdana 10, cover Calibri, margin headings / initial boxes / page number Arial.
@@ -35,8 +35,8 @@ export async function buildAgreementDocx(model: AgreementModel, cfg: RenderConfi
   const run = (text: string, o: { bold?: boolean; size?: number; font?: string } = {}) =>
     new TextRun({ text, font: o.font ?? FONT, size: o.size ?? SIZE, bold: o.bold })
   const runsOf = (line: Line, size?: number) => line.map((r) => run(r.text, { bold: r.bold, size }))
-  const para = (children: DocxTextRun[], o: { align?: (typeof AlignmentType)[keyof typeof AlignmentType]; before?: number; after?: number } = {}) =>
-    new Paragraph({ alignment: o.align, spacing: { before: o.before ?? 0, after: o.after ?? 0 }, children })
+  const para = (children: DocxTextRun[], o: { align?: (typeof AlignmentType)[keyof typeof AlignmentType]; before?: number; after?: number; keepNext?: boolean } = {}) =>
+    new Paragraph({ alignment: o.align, spacing: { before: o.before ?? 0, after: o.after ?? 0 }, keepNext: o.keepNext, children })
 
   // ── Cover ────────────────────────────────────────────────────────────────
   const c = model.cover
@@ -64,54 +64,51 @@ export async function buildAgreementDocx(model: AgreementModel, cfg: RenderConfi
   ]
   const THICK = { style: BorderStyle.THICK, size: 36, color: '000000', space: 24 }
 
-  // ── Body: one borderless table, columns = number | sub-number | text | margin heading ──
-  const COL_NO = 560
-  const COL_SUB = 680
-  const COL_MARGIN = Math.round(cfg.marginColumn * 20)
-  const COL_GAP = 280
-  const COL_TEXT = CONTENT_W - COL_NO - COL_SUB - COL_MARGIN
+  // ── Body: one borderless table from the left margin into the right page margin (original measurements):
+  // number 78.1 pt | text 114.1–448.3 pt (justified) | gap | margin heading 512.4 pt, 66 pt wide (Arial 7).
+  const pt = (n: number) => Math.round(n * 20)
+  const B = cfg.body
+  const LEFT_PT = MAIN.left / 20
+  const COL_NUM = pt(B.textX - LEFT_PT)
+  const COL_TEXT = pt(B.textRight - B.textX)
+  const COL_GAP = pt(B.marginX - B.textRight)
+  const COL_MARGIN = pt(B.marginWidth)
+  const BODY_SPACING = { line: pt(B.lineHeight), lineRule: LineRuleType.EXACT }
   const cell = (children: DocxParagraph[], width: number, span = 1) =>
     new TableCell({ width: dxa(width), columnSpan: span > 1 ? span : undefined, borders: CELL_NONE, margins: { left: 0, right: 0, top: 0, bottom: 0 }, children })
-  const bodyPara = (text: string, o: { bold?: boolean; justify?: boolean } = {}) =>
+  const bodyPara = (runs: Run[], o: { justify?: boolean } = {}) =>
     new Paragraph({
       alignment: o.justify === false ? AlignmentType.LEFT : AlignmentType.JUSTIFIED,
-      spacing: { before: 0, after: 180, line: 264 },
-      children: [run(text, { bold: o.bold })],
+      spacing: { before: 0, after: 180, ...BODY_SPACING },
+      children: runsOf(runs),
     })
+  // First margin heading is nudged down so its baseline sits level with the clause's first line.
   const marginParas = (item: BodyItem) =>
     item.margin.length
-      ? item.margin.map((m) => new Paragraph({ spacing: { after: 60 }, children: [run(m, { bold: true, size: 14, font: ARIAL })] }))
+      ? item.margin.map((m, i) => new Paragraph({ spacing: { before: i === 0 ? 70 : 0, after: 60 }, children: [run(m, { bold: true, size: 14, font: ARIAL })] }))
       : [new Paragraph({ children: [] })]
+  const empty = () => cell([new Paragraph({ children: [] })], COL_GAP)
 
   const bodyRows = model.body.map((item) => {
     if (item.kind === 'heading') {
-      return new TableRow({ cantSplit: true, children: [cell([bodyPara(item.text, { bold: true, justify: false })], COL_NO + COL_SUB + COL_TEXT, 3), cell([new Paragraph({ children: [] })], COL_MARGIN)] })
+      return new TableRow({ cantSplit: true, children: [cell([bodyPara(item.runs, { justify: false })], COL_NUM + COL_TEXT, 2), empty(), cell([new Paragraph({ children: [] })], COL_MARGIN)] })
     }
-    const marginCell = new TableCell({ width: dxa(COL_MARGIN), borders: CELL_NONE, margins: { left: COL_GAP, right: 0, top: 0, bottom: 0 }, children: marginParas(item) })
+    const marginCell = cell(marginParas(item), COL_MARGIN)
     if (!item.no) {
-      return new TableRow({ children: [cell([bodyPara(item.text)], COL_NO + COL_SUB + COL_TEXT, 3), marginCell] })
-    }
-    if (item.level === 0) {
-      return new TableRow({
-        children: [
-          cell([para([run(`${item.no}.`, { bold: true })])], COL_NO),
-          cell([bodyPara(item.text)], COL_SUB + COL_TEXT, 2),
-          marginCell,
-        ],
-      })
+      return new TableRow({ children: [cell([bodyPara(item.runs)], COL_NUM + COL_TEXT, 2), empty(), marginCell] })
     }
     return new TableRow({
       children: [
-        cell([new Paragraph({ children: [] })], COL_NO),
-        cell([para([run(item.no)])], COL_SUB),
-        cell([bodyPara(item.text)], COL_TEXT),
+        cell([new Paragraph({ spacing: BODY_SPACING, children: [run(item.level === 0 ? `${item.no}.` : item.no, { bold: item.level === 0 })] })], COL_NUM),
+        cell([bodyPara(item.runs)], COL_TEXT),
+        empty(),
         marginCell,
       ],
     })
   })
   const bodyTable = new Table({
-    width: dxa(CONTENT_W),
-    columnWidths: [COL_NO, COL_SUB, COL_TEXT, COL_MARGIN],
+    width: dxa(COL_NUM + COL_TEXT + COL_GAP + COL_MARGIN),
+    columnWidths: [COL_NUM, COL_TEXT, COL_GAP, COL_MARGIN],
     layout: TableLayoutType.FIXED,
     borders: NO_BORDERS,
     rows: bodyRows,
@@ -148,30 +145,35 @@ export async function buildAgreementDocx(model: AgreementModel, cfg: RenderConfi
   const SIG_B = 400
   const SIG_R = CONTENT_W - SIG_L - SIG_B
   const dots = '.'.repeat(38)
-  const sigRow = (line: Line, dotted: boolean, bracket = true) =>
+  // keepNext on every row but the last keeps each side's block on one page.
+  const sigRow = (line: Line, dotted: boolean, bracket = true, keepNext = true) =>
     new TableRow({
       cantSplit: true,
       children: [
-        cell([para(runsOf(line), { after: 40 })], SIG_L),
-        cell([para(bracket ? [run(')')] : [], { after: 40 })], SIG_B),
-        cell([para(dotted ? [run(dots)] : [], { after: 40 })], SIG_R),
+        cell([para(runsOf(line), { after: 40, keepNext })], SIG_L),
+        cell([para(bracket ? [run(')')] : [], { after: 40, keepNext })], SIG_B),
+        cell([para(dotted ? [run(dots)] : [], { after: 40, keepNext })], SIG_R),
       ],
     })
   const signingChildren: (DocxParagraph | DocxTable)[] = [
     new Paragraph({ alignment: AlignmentType.JUSTIFIED, spacing: { after: 480, line: 276 }, children: [run(model.testimonium)] }),
   ]
-  for (const b of model.signing) {
+  for (const side of model.signing) {
+    const rows = [
+      sigRow([{ text: side.heading, bold: true }], false),
+      ...side.signers.flatMap((lines, si) => [
+        ...(si > 0 ? [sigRow([], false, false)] : []),
+        ...lines.map((l, i) => sigRow(l, i === 0)),
+      ]),
+      sigRow([], false, false),
+      ...side.witness.map((l, i) => sigRow(l, i === 1, true, i < side.witness.length - 1)),
+    ]
     signingChildren.push(new Table({
       width: dxa(CONTENT_W),
       columnWidths: [SIG_L, SIG_B, SIG_R],
       layout: TableLayoutType.FIXED,
       borders: NO_BORDERS,
-      rows: [
-        sigRow([{ text: b.heading, bold: true }], false),
-        ...b.signer.map((l, i) => sigRow(l, i === 0)),
-        sigRow([], false, false),
-        ...b.witness.map((l, i) => sigRow(l, i === 1)),
-      ],
+      rows,
     }))
     signingChildren.push(new Paragraph({ spacing: { after: 360 }, children: [] }))
   }
@@ -238,14 +240,17 @@ export async function buildAgreementDocx(model: AgreementModel, cfg: RenderConfi
     rows: [
       new TableRow({
         cantSplit: true,
-        children: [
-          ['Signed by the Landlord in the presence of:', s2.landlordName],
-          ['Confirmed by the Tenant in the presence of:', s2.tenantName],
-        ].map(([heading, name]) => sigCell([
-          para([run(heading, { bold: true })], { after: 720 }),
-          para([run('.'.repeat(40))], { after: 120 }),
-          para([run(`Name: ${name}`)], { after: 120 }),
-          para([run('Date:')]),
+        // Landlord names under the landlord heading, tenant names under the tenant heading (one block each).
+        children: ([
+          ['Signed by the Landlord in the presence of:', s2.landlordNames],
+          ['Confirmed by the Tenant in the presence of:', s2.tenantNames],
+        ] as [string, string[]][]).map(([heading, names]) => sigCell([
+          para([run(heading, { bold: true })]),
+          ...names.flatMap((name) => [
+            para([run('.'.repeat(40))], { before: 640, after: 120 }),
+            para([run(`Name: ${name}`)], { after: 120 }),
+            para([run('Date:')]),
+          ]),
         ])),
       }),
     ],

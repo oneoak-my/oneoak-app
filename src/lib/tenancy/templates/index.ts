@@ -47,8 +47,21 @@ export interface RenderConfig {
   extraClausesAfter: string
   /** Body font size in points. */
   bodySize: number
-  /** Width of the right-hand margin-heading column in points. */
-  marginColumn: number
+  /** Clause page geometry in points from the left page edge (original template measurements). */
+  body: {
+    /** Clause numbers (1., 5.1, 7.10 …) */
+    numberX: number
+    /** Clause and sub-clause text */
+    textX: number
+    /** Right edge of the justified text */
+    textRight: number
+    /** Margin headings start here (in the right page margin) … */
+    marginX: number
+    /** … and wrap at this width */
+    marginWidth: number
+    /** Line pitch of the body text */
+    lineHeight: number
+  }
 }
 
 export interface TenancyTemplate {
@@ -63,7 +76,11 @@ export const TEMPLATES: TenancyTemplate[] = [
     id: 'standard-forfeit-2-months',
     label: 'Standard - Forfeit 2 months deposit',
     json: standardForfeit2Months as TenancyTemplateJson,
-    render: { extraClausesAfter: '7', bodySize: 10, marginColumn: 105 },
+    render: {
+      extraClausesAfter: '7',
+      bodySize: 10,
+      body: { numberX: 78.1, textX: 114.1, textRight: 448.3, marginX: 512.4, marginWidth: 66, lineHeight: 12.1 },
+    },
   },
 ]
 

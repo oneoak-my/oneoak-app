@@ -19,14 +19,35 @@ export interface BodyItem {
   level: 0 | 1
   no: string
   margin: string[]
+  /** Plain wording (bold markers removed). */
   text: string
+  /** The same wording as styled runs: **…** in the template JSON marks bold. */
+  runs: Run[]
 }
+
+/** "a **Section 1 of the Schedule** b" → runs [a ][Section 1 of the Schedule (bold)][ b]. */
+export function parseBold(text: string): Run[] {
+  const runs: Run[] = []
+  const re = /\*\*([\s\S]+?)\*\*/g
+  let last = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text))) {
+    if (m.index > last) runs.push({ text: text.slice(last, m.index) })
+    runs.push({ text: m[1], bold: true })
+    last = m.index + m[0].length
+  }
+  if (last < text.length) runs.push({ text: text.slice(last) })
+  return runs.length ? runs : [{ text }]
+}
+
+const plainText = (text: string) => text.replace(/\*\*/g, '')
 
 export interface PartyLine { name: string; idLine: string }
 
-export interface SigningBlock {
+/** One side of the signing page: the heading once, every signer, then one witness block. */
+export interface SigningSide {
   heading: string
-  signer: Line[]
+  signers: Line[][]
   witness: Line[]
 }
 
@@ -37,9 +58,9 @@ export interface AgreementModel {
   cover: { date: string; premisesLines: string[]; landlords: PartyLine[]; tenants: PartyLine[] }
   body: BodyItem[]
   testimonium: string
-  signing: SigningBlock[]
+  signing: SigningSide[]
   schedule: { title: string; subtitle: string; columns: string[]; rows: ScheduleRow[] }
-  scheduleII: TenancyTemplate['json']['schedule_ii'] & { landlordName: string; tenantName: string }
+  scheduleII: TenancyTemplate['json']['schedule_ii'] & { landlordNames: string[]; tenantNames: string[] }
 }
 
 const v = (s: string | null | undefined) => (s && s.trim() ? s.trim() : BLANK)
@@ -169,46 +190,45 @@ export function buildAgreementModel(template: TenancyTemplate, d: TenancyData): 
 
   // ── Body ──
   const body: BodyItem[] = []
-  body.push({ kind: 'clause', level: 0, no: '', margin: t.preamble.margin, text: t.preamble.text })
-  body.push({ kind: 'heading', level: 0, no: '', margin: [], text: 'WHEREAS :-' })
-  for (const w of t.whereas) body.push({ kind: 'clause', level: 0, no: w.no, margin: w.margin, text: w.text })
-  body.push({ kind: 'heading', level: 0, no: '', margin: [], text: t.agreed_intro })
+  const clause = (level: 0 | 1, no: string, margin: string[], text: string): BodyItem =>
+    ({ kind: 'clause', level, no, margin, text: plainText(text), runs: parseBold(text) })
+  const heading = (text: string): BodyItem => ({ kind: 'heading', level: 0, no: '', margin: [], text, runs: [{ text, bold: true }] })
+  body.push(clause(0, '', t.preamble.margin, t.preamble.text))
+  body.push(heading('WHEREAS :-'))
+  for (const w of t.whereas) body.push(clause(0, w.no, w.margin, w.text))
+  body.push(heading(t.agreed_intro))
 
   const extras = d.extraClauses.filter((c) => c.text.trim() || c.margin.trim())
   const pushClause = (c: TemplateClause) => {
-    body.push({ kind: 'clause', level: 0, no: c.no, margin: c.margin, text: c.text })
+    body.push(clause(0, c.no, c.margin, c.text))
     const subs = c.sub ?? []
-    for (const s of subs) body.push({ kind: 'clause', level: 1, no: s.no, margin: s.margin, text: s.text })
+    for (const s of subs) body.push(clause(1, s.no, s.margin, s.text))
     if (c.no === template.render.extraClausesAfter) {
       let next = subs.length + 1
       for (const x of extras) {
-        body.push({
-          kind: 'clause', level: 1, no: `${c.no}.${next++}`,
-          margin: x.margin.trim() ? [x.margin.trim()] : [], text: x.text.trim() || BLANK,
-        })
+        // Typed clauses are printed as typed (no bold markers).
+        const text = x.text.trim() || BLANK
+        body.push({ kind: 'clause', level: 1, no: `${c.no}.${next++}`, margin: x.margin.trim() ? [x.margin.trim()] : [], text, runs: [{ text }] })
       }
     }
   }
   t.agreed.forEach(pushClause)
 
-  // ── Signing ──
-  const signing: SigningBlock[] = []
+  // ── Signing: one heading and one witness block per side ──
   const witness = (w: PersonId): Line[] => [[{ text: 'In the presence of :' }], ...signerLines(w)]
-  for (const l of d.landlords) {
-    signing.push({ heading: 'SIGNED BY THE SAID LANDLORD', signer: signerLines(l), witness: witness(d.landlordWitness) })
-  }
-  for (const tn of d.tenants) {
-    const signer: Line[] = tn.kind === 'company'
-      ? [
-          [{ text: upper(tn.companyName), bold: true }],
-          [{ text: `(Company No : ${v(tn.companyNo)})` }],
-          ...(tn.signatory.name.trim()
-            ? [[{ text: 'Authorised signatory : ' }, { text: upper(tn.signatory.name), bold: true }], [{ text: `(${idLabel(tn.signatory)})` }]]
-            : []),
-        ]
-      : signerLines(tn)
-    signing.push({ heading: 'SIGNED BY THE SAID TENANT', signer, witness: witness(d.tenantWitness) })
-  }
+  const tenantSigner = (tn: Tenant): Line[] => (tn.kind === 'company'
+    ? [
+        [{ text: upper(tn.companyName), bold: true }],
+        [{ text: `(Company No : ${v(tn.companyNo)})` }],
+        ...(tn.signatory.name.trim()
+          ? [[{ text: 'Authorised signatory : ' }, { text: upper(tn.signatory.name), bold: true }], [{ text: `(${idLabel(tn.signatory)})` }]]
+          : []),
+      ]
+    : signerLines(tn))
+  const signing: SigningSide[] = [
+    { heading: 'SIGNED BY THE SAID LANDLORD', signers: d.landlords.map(signerLines), witness: witness(d.landlordWitness) },
+    { heading: 'SIGNED BY THE SAID TENANT', signers: d.tenants.map(tenantSigner), witness: witness(d.tenantWitness) },
+  ]
 
   // ── Schedule ──
   const rows = t.schedule.rows.map((r) => scheduleRow(r, d)).filter((r): r is ScheduleRow => r !== null)
@@ -230,8 +250,8 @@ export function buildAgreementModel(template: TenancyTemplate, d: TenancyData): 
     schedule: { title: t.schedule.title, subtitle: t.schedule.subtitle, columns: t.schedule.columns, rows },
     scheduleII: {
       ...t.schedule_ii,
-      landlordName: upper(d.schedIILandlordName ?? d.landlordWitness.name),
-      tenantName: upper(d.schedIITenantName ?? d.tenantWitness.name),
+      landlordNames: d.landlords.map((l) => upper(l.name)),
+      tenantNames: d.tenants.map(tenantName),
     },
   }
 }

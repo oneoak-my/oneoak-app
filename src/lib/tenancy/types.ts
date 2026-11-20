@@ -63,9 +63,6 @@ export interface TenancyData {
   accessCardDetails: string
   landlordWitness: PersonId
   tenantWitness: PersonId
-  /** Schedule II signing names; null = the witness names. */
-  schedIILandlordName: string | null
-  schedIITenantName: string | null
   extraClauses: ExtraClause[]
 }
 
@@ -119,8 +116,6 @@ export function emptyTenancyData(): TenancyData {
     accessCardDetails: '',
     landlordWitness: emptyPerson(),
     tenantWitness: emptyPerson(),
-    schedIILandlordName: null,
-    schedIITenantName: null,
     extraClauses: [],
   }
 }
@@ -129,6 +124,10 @@ export function emptyTenancyData(): TenancyData {
 export function normaliseTenancyData(raw: Partial<TenancyData> | null | undefined): TenancyData {
   const base = emptyTenancyData()
   const d = { ...base, ...(raw ?? {}) } as TenancyData
+  // Older drafts stored Schedule II signing names; Schedule II now prints the landlords and tenants, so drop them.
+  const legacy = d as unknown as Record<string, unknown>
+  delete legacy.schedIILandlordName
+  delete legacy.schedIITenantName
   d.landlords = (raw?.landlords?.length ? raw.landlords : base.landlords).map((l) => ({ ...emptyLandlord(), ...l }))
   d.tenants = (raw?.tenants?.length ? raw.tenants : base.tenants).map((t) => ({
     ...emptyTenant(), ...t,

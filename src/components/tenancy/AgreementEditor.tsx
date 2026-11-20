@@ -504,17 +504,7 @@ export default function AgreementEditor({ row, units }: { row: TenancyAgreementR
         <SubCard title="Tenant's witness">
           <PersonFields person={data.tenantWitness} nameLabel="Name" required src={(f) => src(`tenantWitness.${f}`)} onChange={(p) => set('tenantWitness', p)} />
         </SubCard>
-        <Hint>Each witness is printed under every landlord / tenant signing block.</Hint>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <Field label="Schedule II name (Landlord side)" value={data.schedIILandlordName ?? data.landlordWitness.name} onChange={(v) => set('schedIILandlordName', v)} />
-            {data.schedIILandlordName != null && <LinkButton onClick={() => set('schedIILandlordName', null)}>Use landlord&apos;s witness</LinkButton>}
-          </div>
-          <div className="space-y-1">
-            <Field label="Schedule II name (Tenant side)" value={data.schedIITenantName ?? data.tenantWitness.name} onChange={(v) => set('schedIITenantName', v)} />
-            {data.schedIITenantName != null && <LinkButton onClick={() => set('schedIITenantName', null)}>Use tenant&apos;s witness</LinkButton>}
-          </div>
-        </div>
+        <Hint>The landlord&apos;s witness is printed once after all the landlords, and the tenant&apos;s witness once after all the tenants. Schedule II is signed with the landlord and tenant names.</Hint>
       </Section>
 
       {/* Additional clauses */}

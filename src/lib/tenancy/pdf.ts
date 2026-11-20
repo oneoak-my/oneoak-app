@@ -190,44 +190,44 @@ export async function buildAgreementPdf(model: AgreementModel, cfg: RenderConfig
     }
   }
 
-  // ── Body (Verdana 10; margin headings Arial 7) ───────────────────────────
+  // ── Body (Verdana 10; margin headings Arial 7 in the right page margin) ─
   newPage('main')
-  const MARGIN_W = cfg.marginColumn
-  const MARGIN_X = R - MARGIN_W
-  const TEXT_RIGHT = MARGIN_X - 14
+  const BODY = cfg.body
+  const BLH = BODY.lineHeight
+  const TEXT_RIGHT = BODY.textRight
 
   function marginLines(item: BodyItem): string[][] {
     return item.margin.map((h) =>
-      wrapRuns([{ text: h, bold: true }], MARGIN_W, MSIZE, 'arial').map((l) => l.map((w) => w.map((g) => g.text).join('')).join(' ')))
+      wrapRuns([{ text: h, bold: true }], BODY.marginWidth, MSIZE, 'arial').map((l) => l.map((w) => w.map((g) => g.text).join('')).join(' ')))
   }
 
   for (const item of model.body) {
     if (item.kind === 'heading') {
-      if (y - LH * 4 < BOTTOM) newPage('main')
+      if (y - BLH * 4 < BOTTOM) newPage('main')
       y -= 8
-      paragraph([{ text: item.text, bold: true }], L, TEXT_RIGHT - L, { align: 'left' })
+      for (const ws of wrapRuns(item.runs, TEXT_RIGHT - L, SIZE)) { y -= BLH; drawWords(ws, L, y, SIZE, null) }
       y -= 6
       continue
     }
-    const numX = item.level === 0 ? L : L + 28
-    const textX = item.no === '' && item.level === 0 ? L : item.level === 0 ? L + 28 : L + 62
+    // Numbered clauses and sub-clauses: number at numberX, text at textX. The preamble (no number) starts at the margin.
+    const textX = item.no === '' ? L : BODY.textX
     const textW = TEXT_RIGHT - textX
-    const ls = wrapRuns([{ text: item.text }], textW, SIZE)
+    const ls = wrapRuns(item.runs, textW, SIZE)
     const ms = marginLines(item)
     const marginH = ms.reduce((s, g, i) => s + g.length * MLH + (i ? 4 : 0), 0)
     // Keep at least two lines (and the whole margin heading) with the clause start.
-    if (y - Math.max(LH * Math.min(2, ls.length), marginH) < BOTTOM) newPage('main')
+    if (y - Math.max(BLH * Math.min(2, ls.length), marginH) < BOTTOM) newPage('main')
     const startPage = page
-    // Margin heading(s): first baseline level with the clause's first line.
-    let my = y - LH + MLH
+    // Margin heading(s): placed absolutely in the right page margin, first baseline level with the clause's first line.
+    let my = y - BLH + MLH
     ms.forEach((g, gi) => {
       if (gi) my -= 4
-      for (const l of g) { my -= MLH; draw(l, MARGIN_X, my, MSIZE, arialBold) }
+      for (const l of g) { my -= MLH; draw(l, BODY.marginX, my, MSIZE, arialBold) }
     })
     ls.forEach((ws, i) => {
-      if (y - LH < BOTTOM) newPage('main')
-      y -= LH
-      if (i === 0 && item.no) draw(`${item.no}${item.level === 0 ? '.' : ''}`, numX, y, SIZE, item.level === 0 ? verdanaBold : verdana)
+      if (y - BLH < BOTTOM) newPage('main')
+      y -= BLH
+      if (i === 0 && item.no) draw(`${item.no}${item.level === 0 ? '.' : ''}`, BODY.numberX, y, SIZE, item.level === 0 ? verdanaBold : verdana)
       drawWords(ws, textX, y, SIZE, i < ls.length - 1 ? textW : null)
     })
     if (page === startPage && my < y) y = my
@@ -235,25 +235,29 @@ export async function buildAgreementPdf(model: AgreementModel, cfg: RenderConfig
   }
 
   // ── Signing page (own page, same margins as the clauses) ────────────────
+  // One heading per side, every signer with a signature line, then the side's witness once.
   newPage('main')
   paragraph([{ text: model.testimonium }], L, R - L)
   y -= 26
   const BRACKET_X = L + 270
   const SIGN_X1 = BRACKET_X + 20
   const dots = (x1: number, x2: number) => '.'.repeat(Math.max(10, Math.floor((x2 - x1) / width('.', verdana, SIZE))))
-  for (const b of model.signing) {
-    const rows: { words: Word[]; dotted: boolean; gap?: boolean }[] = []
+  for (const side of model.signing) {
+    const rows: { words: Word[]; dotted: boolean; gap?: number }[] = []
     const addLine = (line: Line, dotted: boolean) =>
       wrapRuns(line, BRACKET_X - L - 8, SIZE).forEach((words, k) => rows.push({ words, dotted: dotted && k === 0 }))
-    addLine([{ text: b.heading, bold: true }], false)
-    b.signer.forEach((line, i) => addLine(line, i === 0))
-    rows.push({ words: [], dotted: false, gap: true })
-    b.witness.forEach((line, i) => addLine(line, i === 1))
-    const h = rows.length * LH + 30
+    addLine([{ text: side.heading, bold: true }], false)
+    side.signers.forEach((lines, si) => {
+      if (si > 0) rows.push({ words: [], dotted: false, gap: LH * 0.6 })
+      lines.forEach((line, i) => addLine(line, i === 0))
+    })
+    rows.push({ words: [], dotted: false, gap: LH * 0.6 })
+    side.witness.forEach((line, i) => addLine(line, i === 1))
+    const h = rows.reduce((s, r) => s + (r.gap ?? LH), 0) + 30
     if (y - h < BOTTOM) newPage('main')
     for (const r of rows) {
-      y -= r.gap ? LH * 0.6 : LH
-      if (r.gap) continue
+      if (r.gap) { y -= r.gap; continue }
+      y -= LH
       drawWords(r.words, L, y, SIZE, null)
       draw(')', BRACKET_X, y)
       if (r.dotted) draw(dots(SIGN_X1, R), SIGN_X1, y)
@@ -351,25 +355,31 @@ export async function buildAgreementPdf(model: AgreementModel, cfg: RenderConfig
     })
     y -= 3
   })
+  // Signing part: landlords under the landlord heading, tenants under the tenant heading (one block per name).
   const half = (R - L) / 2
   const sigLines = (heading: string) => wrapRuns([{ text: heading, bold: true }], half - 10, SIZE)
   const headL = sigLines('Signed by the Landlord in the presence of:')
   const headT = sigLines('Confirmed by the Tenant in the presence of:')
-  const sigH = Math.max(headL.length, headT.length) * LH + 44 + 3 * 16
+  const nameLines = (name: string) => wrapRuns([{ text: `Name: ${name}` }], half - 10, SIZE)
+  const PER_NAME_GAP = 32
+  const colHeight = (head: Word[][], names: string[]) =>
+    head.length * LH + names.reduce((s, n) => s + PER_NAME_GAP + LH + nameLines(n).length * 16 + 16, 0)
+  const sigH = Math.max(colHeight(headL, s2.landlordNames), colHeight(headT, s2.tenantNames))
   if (y - 30 - sigH < BOTTOM) newPage('schedule')
   y -= 30
-  const sigCol = (x: number, head: Word[][], name: string) => {
+  const sigCol = (x: number, head: Word[][], names: string[]) => {
     let yy = y
     head.forEach((ws) => { drawWords(ws, x, yy, SIZE, null); yy -= LH })
-    yy -= 32
-    draw(dots(x, x + half - 10), x, yy)
-    yy -= 16
-    draw(`Name: ${name}`, x, yy)
-    yy -= 16
-    draw('Date:', x, yy)
+    for (const name of names) {
+      yy -= PER_NAME_GAP
+      draw(dots(x, x + half - 10), x, yy)
+      for (const ws of nameLines(name)) { yy -= 16; drawWords(ws, x, yy, SIZE, null) }
+      yy -= 16
+      draw('Date:', x, yy)
+    }
   }
-  sigCol(L, headL, s2.landlordName)
-  sigCol(L + half + 10, headT, s2.tenantName)
+  sigCol(L, headL, s2.landlordNames)
+  sigCol(L + half + 10, headT, s2.tenantNames)
 
   // ── Footers on every page except the cover: initial box (Arial 8) + page number (Arial 9) ──
   footerPages.forEach(({ page: p, group: g }, i) => {
