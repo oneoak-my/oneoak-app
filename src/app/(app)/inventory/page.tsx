@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, ClipboardList } from 'lucide-react'
+import Link from 'next/link'
+import { Plus, ClipboardList, ArrowLeft } from 'lucide-react'
 import { getInventories, createInventory, deleteInventory } from '@/lib/inventoryApi'
 import { getUnits } from '@/lib/api'
 import type { Inventory } from '@/lib/inventoryTypes'
@@ -35,6 +36,11 @@ export default function InventoryListPage() {
   const [newShortAddress, setNewShortAddress] = useState('')
   const [creating, setCreating] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  // Opened from the "Inventory Photos" card (/inventory?view=photos): open each inventory on its Photos tab.
+  const [photosView, setPhotosView] = useState(false)
+  useEffect(() => {
+    setPhotosView(new URLSearchParams(window.location.search).get('view') === 'photos')
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -104,7 +110,12 @@ export default function InventoryListPage() {
     <div className="min-h-screen bg-[#0e0c08] pb-24">
       {/* Header */}
       <div className="sticky top-0 z-30 bg-[#0e0c08]/95 backdrop-blur border-b border-[#1e1a14] px-4 py-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-[#f5f0e8]">Inventory Lists</h1>
+        <div className="flex items-center gap-2 min-w-0">
+          <Link href="/tenancy-admin" aria-label="Back to Tenancy Admin" className="shrink-0 p-1.5 -ml-1.5 rounded-lg text-[#7c6f54] hover:text-[#f5f0e8] hover:bg-[#262018]">
+            <ArrowLeft size={18} />
+          </Link>
+          <h1 className="text-xl font-bold text-[#f5f0e8] truncate">{photosView ? 'Inventory Photos' : 'Inventory Lists'}</h1>
+        </div>
         <Button
           variant="primary"
           size="sm"
@@ -120,6 +131,10 @@ export default function InventoryListPage() {
           <div className="text-center text-[#7c6f54] py-16 text-sm">Loading…</div>
         )}
 
+        {photosView && !loading && inventories.length > 0 && (
+          <p className="text-xs text-[#7c6f54]">Pick an inventory to open its photos.</p>
+        )}
+
         {!loading && inventories.length === 0 && (
           <EmptyState
             icon={<ClipboardList size={36} className="text-[#7c6f54]" />}
@@ -131,7 +146,7 @@ export default function InventoryListPage() {
         {inventories.map((inv) => (
           <button
             key={inv.id}
-            onClick={() => router.push(`/inventory/${inv.id}`)}
+            onClick={() => router.push(photosView ? `/inventory/${inv.id}?tab=photos` : `/inventory/${inv.id}`)}
             style={{ touchAction: 'manipulation', minHeight: '64px' }}
             className="w-full text-left bg-[#1e1a14] border border-[#332c20] rounded-2xl px-4 py-3.5 hover:border-[#3d3628] transition-colors active:scale-[0.99]"
           >

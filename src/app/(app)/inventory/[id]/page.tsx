@@ -718,6 +718,10 @@ export default function InventoryEditorPage() {
   const [customBrands, setCustomBrands] = useState<Record<string, string[]>>({})
   const [exporting, setExporting] = useState<'word' | 'pdf' | null>(null)
   const [tab, setTab] = useState<'checklist' | 'photos'>('checklist')
+  // "?tab=photos" (from Tenancy Admin → Inventory Photos) opens straight on the Photos tab.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('tab') === 'photos') setTab('photos')
+  }, [])
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inventoryRef = useRef<Inventory | null>(null)

@@ -4,11 +4,11 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Home, Building2, CalendarDays, Receipt, ClipboardList } from 'lucide-react'
 
-const NAV_ITEMS = [
+const NAV_ITEMS: { href: string; label: string; icon: typeof Home; also?: string[] }[] = [
   { href: '/', label: 'Home', icon: Home },
   { href: '/units', label: 'Units', icon: Building2 },
   { href: '/schedule', label: 'Schedule', icon: CalendarDays },
-  { href: '/inventory', label: 'Inventory', icon: ClipboardList },
+  { href: '/tenancy-admin', label: 'Tenancy Admin', icon: ClipboardList, also: ['/inventory'] },
   { href: '/bills', label: 'Bills', icon: Receipt },
 ]
 
@@ -18,9 +18,9 @@ export default function BottomNav() {
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 max-w-2xl mx-auto border-t border-[#332c20] bg-[#141210]/95 backdrop-blur-sm safe-bottom">
       <div className="flex items-center justify-around h-16 px-2">
-        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+        {NAV_ITEMS.map(({ href, label, icon: Icon, also }) => {
           const isActive =
-            href === '/' ? pathname === '/' : pathname.startsWith(href)
+            href === '/' ? pathname === '/' : [href, ...(also ?? [])].some((p) => pathname.startsWith(p))
           return (
             <Link
               key={href}

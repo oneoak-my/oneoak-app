@@ -1,0 +1,473 @@
+{
+ "id": "standard-forfeit-2-months",
+ "name": "Standard - Forfeit 2 months deposit (Reapfield/One Oak)",
+ "version": 1,
+ "page": "A4",
+ "font_note": "Serif/Arial-like body, 10-10.5pt, justified; cover page in a thick bordered box",
+ "cover": {
+  "lines": [
+   "{dateOfAgreement}",
+   "**************************************",
+   "TENANCY AGREEMENT",
+   "**************************************",
+   "{premisesAddress}",
+   "between",
+   "{landlordsBlock}",
+   "(the Landlord)",
+   "and",
+   "{tenantsBlock}",
+   "(the Tenant)"
+  ],
+  "note": "Cover shows the date (e.g. 25th August 2026), a row of asterisks, title, asterisks, premises address (bold, centred), 'between', each landlord name in bold with '(NRIC)' below, '(the Landlord)', 'and', each tenant name in bold with '(PASSPORT NO)' below, '(the Tenant)'. Whole page inside a thick border."
+ },
+ "footer_each_page": "A small two-box initial table 'Landlord | Tenant' at the bottom right of every body page, plus the page number centred",
+ "preamble": {
+  "margin": [
+   "Parties"
+  ],
+  "text": "THIS AGREEMENT is made the day and year stated in Section 1 of the Schedule hereto between the party whose name and description are stated in Section 2 of the Schedule hereto (hereinafter called the \"Landlord\") of the one part and the party whose name and description are stated in Section 3 of the Schedule hereto (hereinafter called the \"Tenant\") of the other part."
+ },
+ "whereas": [
+  {
+   "no": "1",
+   "margin": [
+    "Description of Said Premises"
+   ],
+   "text": "The Landlord is the registered/beneficial proprietor of the property more particularly referred to and described in Section 4 of the Schedule hereto (hereinafter referred to as the Said Premises)."
+  },
+  {
+   "no": "2",
+   "margin": [
+    "Inventory of Furnishings"
+   ],
+   "text": "The Landlord is desirous of letting and the Tenant is desirous of taking the Said Premises together with furniture, fixtures and fittings as described in the Inventory hereto subject to the terms and conditions hereinafter contained."
+  }
+ ],
+ "agreed_intro": "NOW IT IS HEREBY AGREED AS FOLLOWS :-",
+ "agreed": [
+  {
+   "no": "1",
+   "margin": [
+    "Agreement To Rent",
+    "Term Of Tenancy"
+   ],
+   "text": "Subject to the terms and conditions herein contained the Landlord hereby grants and the Tenant hereby accepts a tenancy of the Said Premises for the term, commencing from the date and terminating on the date stated in Section 5(a) (b) and (c) respectively of the Schedule hereto.",
+   "sub": []
+  },
+  {
+   "no": "2",
+   "margin": [
+    "Monthly Rental and date payable"
+   ],
+   "text": "The monthly rental stipulated in Section 6 (a) of the Schedule hereto shall be due and payable in advance in the manner and at the time stipulated in Section 6 (b) respectively of the Schedule hereto.",
+   "sub": []
+  },
+  {
+   "no": "3",
+   "margin": [
+    "Rental Deposit"
+   ],
+   "text": "The Tenant shall upon execution of this Agreement and prior to the occupation of the Said Premises pay the Landlord the deposit stipulated in Section 7 of the Schedule hereto (receipt whereof the Landlord hereby acknowledges) as security for the due observance and performance by the Tenant of all his duties and obligations hereunder and on its part to be performed and fulfilled. The said deposits shall be maintained at this figure during the term of this tenancy and the Tenant shall not be entitled to utilise the said deposit to off-set any rental due under this agreement without the previous written consent of the Landlord and the same shall be returned to the Tenant free of interest within 30 (Thirty) days upon expiry or sooner determination of the term hereby created less any sums as may then be due to the Landlord for damage caused to the Said Premises by the Tenant (damage due to normal wear and tear excepted).",
+   "sub": []
+  },
+  {
+   "no": "4",
+   "margin": [
+    "Utility Deposit"
+   ],
+   "text": "The Tenant shall upon execution of this Agreement and prior to the occupation of the Said Premises pay the Landlord the water and electricity deposits stipulated in Section 8 of the Schedule hereto (collectively as the Utility Deposits). The Tenant shall not be entitled to utilise the said deposit to off-set any rental due under this agreement without the previous written consent of the Landlord and the same shall be refunded to the Tenant free of interest within 30 (Thirty) days upon expiry or sooner determination of the term hereby created less such sum or sums as may then be due and outstanding. For the purposes of determining the current deposits, it is hereby agreed that photocopy of the requisite receipt notice or other written communication from the relevant Department shall be conclusive.",
+   "sub": []
+  },
+  {
+   "no": "5",
+   "margin": [
+    "Tenant Covenants"
+   ],
+   "text": "THE TENANT HEREBY COVENANTS WITH THE LANDLORD as follows:-",
+   "sub": [
+    {
+     "no": "5.1",
+     "margin": [
+      "To Pay Reserved Rent"
+     ],
+     "text": "To pay the reserved rent on the days and in the manner aforesaid."
+    },
+    {
+     "no": "5.2",
+     "margin": [
+      "Payment of Utilities"
+     ],
+     "text": "To pay all charges due and incurred in respect of electricity, water, sewerage (Indah Water Konsortium), gas and all other utilities supplied to the Said Premises."
+    },
+    {
+     "no": "5.3",
+     "margin": [
+      "To keep in good condition"
+     ],
+     "text": "To keep the Said Premises, the fixtures and fittings listed in the Inventory hereto (if any) together with any additions thereto in a good and tenantable repair condition (normal wear and tear excepted) and to replace or repair any of the aforesaid items and any part of the Said Premises and the Landlord's fixtures and fittings which shall be damaged."
+    },
+    {
+     "no": "5.4",
+     "margin": [
+      "Not to make alterations and to maintain premises in present state"
+     ],
+     "text": "Not to make or permit to be made any alterations in or additions to the Said Premises or the Landlord's fixtures, fittings decorations therein without having first obtained the written license and consent of the Landlord thereof and in the event of such license and consent being given to carry out at the Tenant's own expense such alterations with such materials and such manner and at such times as shall be designated by the Landlord and upon the determination of the term hereby created, if required by the Landlord, to restore the Said Premises to its original state and condition at the expense of the Tenant."
+    },
+    {
+     "no": "5.5",
+     "margin": [
+      "To permit entry for inspection and repair purposes."
+     ],
+     "text": "To permit the Landlord and his duly authorised representatives upon giving three (3) days' previous notice at all reasonable times to enter upon and examine the condition of the Said Premises, whereupon the Landlord shall be entitled to serve the Tenant a notice in writing specifying therein any repairs necessary to be carried out and requiring the Tenant to forthwith to execute the same and if the Tenant shall not within fourteen (14) days after service of such notice proceed diligently with the execution of such repairs or works then the Landlord with or without workmen and others shall be entitled to enter upon the Said Premises and execute the repairs and the Tenant agrees that the costs thereof shall be a debt from the Tenant to the Landlord and be forthwith recoverable by action."
+    },
+    {
+     "no": "5.6",
+     "margin": [
+      "Used for stated purpose only"
+     ],
+     "text": "To use the Said Premises only for the purpose stipulated in the Section 10 of the Schedule hereto and not to use or permit or suffer the use thereof for any other purpose Save and Except for the specific purpose herein stated and further not to do or permit or suffer anything to be done in or about the Said Premises or any part thereof which may become a nuisance or cause damage or inconvenience to the Landlord or the Tenant or occupiers of neighbouring premises."
+    },
+    {
+     "no": "5.7",
+     "margin": [
+      "Not to assign and sublet"
+     ],
+     "text": "Not to assign, sublet, or part with the actual or legal possession or the use of the Said Premises for any term whatsoever without first obtaining the previous consent in writing of the Landlord."
+    },
+    {
+     "no": "5.8",
+     "margin": [
+      "Not to do acts which will affect the Landlord."
+     ],
+     "text": "Not to do or permit to be done on the Said Premises anything which may or will infringe any of the laws, by-laws or regulation made by the Government or any competent authority affecting the Said Premises or whereby the policy or policies of insurance against loss or damage by fire may become void or voidable or whereby the rates of premium payable thereon may be increased to repay the Landlord all sums paid by way of increased premium."
+    },
+    {
+     "no": "5.9",
+     "margin": [
+      "To deliver Said Premises and to make good damage."
+     ],
+     "text": "On determination of the term hereby created to clear up any rubbish and peaceably and quietly deliver up to the Landlord vacant possession of the Said Premises in good, clean and proper state of tenantable repair condition. The Tenant may remove all fixtures, fittings or other installations belonging to the Tenant but shall make good any damage caused to the Said Premises or any part thereof by the installation or removal of such fixtures, fittings or installations."
+    },
+    {
+     "no": "5.10",
+     "margin": [
+      "Not to store unlawful goods."
+     ],
+     "text": "Not to store or bring upon the Said Premises arms ammunitions or unlawful goods gunpowder or any explosive or any article or articles of a specially combustible inflammable or dangerous nature and unlawful goods in any part of the Said Premises."
+    },
+    {
+     "no": "5.11",
+     "margin": [
+      "Permission to view"
+     ],
+     "text": "During the Two (2) months immediately preceding the termination of the tenancy unless the Tenant shall have given notice of his intention to renew the tenancy as hereinafter provided, to permit persons with the written authority from the Landlord at all reasonable times of the day to view the Said Premises for the purpose of letting the same."
+    },
+    {
+     "no": "5.12",
+     "margin": [
+      "Service of air-conditioners"
+     ],
+     "text": "In respect of the maintenance of the air-conditioners (if any), the Landlord shall bear the costs of major repair and the Tenant shall maintain and service all the air-conditioners every six (6) months during the said tenancy period at the Tenant's own cost."
+    }
+   ]
+  },
+  {
+   "no": "6",
+   "margin": [
+    "Landlord's Covenants"
+   ],
+   "text": "THE LANDLORD HEREBY COVENANTS WITH THE TENANT as follows:-",
+   "sub": [
+    {
+     "no": "6.1",
+     "margin": [
+      "To pay quit rent, assessment and service charges."
+     ],
+     "text": "To pay the Quit Rent, assessment, service charges and other outgoings relating to the Said Premises other than those herein agreed to be paid by the Tenant."
+    },
+    {
+     "no": "6.2",
+     "margin": [
+      "To keep insured and reinstate Said Premises."
+     ],
+     "text": "At all times through the period of this Agreement to keep the Said Premises except the furniture, fixtures therein belonging to the Tenant insured against loss or damage by fire or tempest and in case of destruction by fire or tempest to replace or reinstate the same as speedily as possible."
+    },
+    {
+     "no": "6.3",
+     "margin": [
+      "To maintain structure of Said Premises in tenantable repair condition."
+     ],
+     "text": "To maintain and keep the main structure of the Said Premises that is the roof, main walls and timbers, drains, water pipes and electrical wiring in good and tenantable repair condition throughout the term hereby created except as regards damage to the premises caused by or resulting from any act of default or negligence of the Tenant or his servants and except as hereinbefore covenanted to be done by the Tenant, then the Tenant shall carry out such repairs at their own cost and expenses."
+    },
+    {
+     "no": "6.4",
+     "margin": [
+      "To allow Tenant to enjoy Said Premises without Landlord's interruption."
+     ],
+     "text": "Upon the Tenant paying the rent hereby reserved and observing and performing the covenants, obligations and stipulations herein on his part contained, to allow the Tenant to peaceably hold and enjoy the Said Premises without interruption from the Landlord or any persons rightfully claiming through under or in trust for him."
+    }
+   ]
+  },
+  {
+   "no": "7",
+   "margin": [],
+   "text": "PROVIDED ALWAYS AND IT IS HEREBY EXPRESSLY AGREED BETWEEN BOTH PARTIES as follows:-",
+   "sub": [
+    {
+     "no": "7.1",
+     "margin": [
+      "Power of re-entry"
+     ],
+     "text": "If at any time the rent or any part thereof (whether formally demanded or not) shall remain unpaid or unsatisfied for seven (7) days after becoming payable or if any of the Tenant's covenant shall not be performed or observed or if the Tenant shall suffer execution on the Said Premises or if the Tenant shall become a bankrupt or being a company or corporation shall go into liquidation otherwise than for the purpose of amalgamation or reconstruction or if the Tenant for the time being shall enter into any composition with the Tenant's creditors or suffer any distress or execution to be levied on the Tenant's goods then and in any of those events it shall be lawful for the Landlord or any persons authorised by the Landlord in that behalf at any time thereafter to re-enter upon the Said Premises or any part thereof in the name of the whole and thereupon this tenancy shall absolutely determine but without prejudice to any right of action or remedy of the Landlord in respect of any breach of the Tenant's covenants herein contained."
+    },
+    {
+     "no": "7.2",
+     "margin": [
+      "Destruction or damage to Said Premises.",
+      "Suspension of Reserved Rent",
+      "Termination in the event of non-reinstatement."
+     ],
+     "text": "In case the Said Premises or any part thereof shall at any time during the term hereby created be destroyed or damaged by fire (except where such fire has been caused by the fault or negligence of the Tenant) or so as to be unfit for occupation or use, the rent hereby reserved shall be suspended until the Said Premises shall again be rendered fit for occupation and use AND PROVIDED ALWAYS that if the Said Premises or any part thereof shall not be rendered and reinstated and made ready and fit for occupation within a period of One (1) month from the date of happening of any such event the Tenant shall be at liberty to give to the Landlord notice in writing determining the Tenancy hereby created and thereupon this Tenancy shall absolutely determine and the Security Deposit and the Utilities Deposit paid by the Tenant hereunder shall be refunded to the Tenant forthwith but without prejudice to the right of action of the Landlord in respect of any antecedent breach of any covenant or condition herein contained."
+    },
+    {
+     "no": "7.3",
+     "margin": [
+      "Option to renew."
+     ],
+     "text": "In the event the Tenant shall be desirous of taking a tenancy of the Said Premises for a further term, the Tenant shall give the Landlord two (2) months' written notice of the same. Provided always that the terms and conditions of this Agreement shall have been duly observed and performed by the Tenant, the Landlord shall grant the Tenant a further term of tenancy as is specified in Section 9 of the Schedule hereto upon the same terms and conditions (save and except for this clause) and at a rental to be agreed upon."
+    },
+    {
+     "no": "7.4",
+     "margin": [
+      "Termination Clause"
+     ],
+     "text": "There shall be no termination of the Tenancy by either party during the first Twelve (12) months of the Tenancy Term. In the event of early termination due to the Tenant's breach of this Agreement during the said period, the Security Deposit and Utility Deposit specified in Sections 7 and 8 of the Schedule hereto shall be forfeited, similarly if the breach is by the Landlord, the Landlord shall pay the same liquidated damages to the Tenant as above. Notwithstanding the foregoing, any party intending to terminate the Tenancy shall provide the other party with not less than two (2) months' prior written notice."
+    },
+    {
+     "no": "7.5",
+     "margin": [
+      "Additional Deposit paid by Tenant."
+     ],
+     "text": "Any additional deposit required by Tenaga Nasional Berhad or the Syarikat Bekalan Air Selangor Sdn Bhd or Indah Water Konsortium from time to time during the continuance of this Agreement shall forthwith be paid by the Tenant to the Landlord as additional utility deposit specified in Section 8 of the Schedule."
+    },
+    {
+     "no": "7.6",
+     "margin": [
+      "Sales of Said Premises subject to tenancy"
+     ],
+     "text": "In the event the Landlord shall be desirous of selling the Said Premises prior to the expiration of the term hereby created, the Landlord hereby covenants, undertakes and agrees that such sale shall be subject to this tenancy and shall procure the Purchaser to continue with the terms and conditions of this Agreement in lieu of the Landlord."
+    },
+    {
+     "no": "7.7",
+     "margin": [
+      "Cost of preparing agreement"
+     ],
+     "text": "All costs and incidentals to the preparation and completion of this Agreement including stamp duty shall be borne by the Tenant and each party shall bear their own solicitor's fees."
+    },
+    {
+     "no": "7.8",
+     "margin": [
+      "Service of notice"
+     ],
+     "text": "Any notice in writing under the terms and conditions of this Agreement to be sent to either party hereto on the other shall be by prepaid registered post and shall be deemed to be sufficiently served at the time when the ordinary course of post would have been delivered."
+    }
+   ]
+  },
+  {
+   "no": "8",
+   "margin": [
+    "Interpretation"
+   ],
+   "text": "In this Agreement :-",
+   "sub": [
+    {
+     "no": "8.1",
+     "margin": [],
+     "text": "The terms \"Landlord\" and \"Tenant\" shall include their heirs, personal representatives and successors in title."
+    },
+    {
+     "no": "8.2",
+     "margin": [],
+     "text": "Words importing the masculine gender only shall include feminine and neuter genders and vice versa."
+    },
+    {
+     "no": "8.3",
+     "margin": [],
+     "text": "Words importing the singular number only shall include the plural and vice versa."
+    }
+   ]
+  }
+ ],
+ "extra_clauses_anchor": "Clause 7 (PROVIDED ALWAYS...). Additional clauses typed by the user are appended as 7.9, 7.10, ... after 7.8 with an optional margin heading.",
+ "testimonium": "IN WITNESS WHEREOF the parties hereto have hereunder set their hands the day and year specified in Section 1 of the Schedule hereto.",
+ "signing": {
+  "landlord_block": "SIGNED BY THE SAID LANDLORD / <NAME bold> / (NRIC NO : <no>) ........ signature line; then 'In the presence of :' / <WITNESS NAME bold> / (NRIC NO : <no>) ........ signature line. One block per landlord (witness repeated per block by default). Use PASSPORT NO for foreign IDs.",
+  "tenant_block": "SIGNED BY THE SAID TENANT / <NAME bold> / (PASSPORT NO : <no>) ...... ; then 'In the presence of :' / <WITNESS NAME> / (PASSPORT NO : <no>). One block per tenant. For a company tenant: company name, (Company No: <SSM>), and authorised signatory name + ID."
+ },
+ "schedule": {
+  "title": "THE SCHEDULE",
+  "subtitle": "(Which is to be taken, read and construed as an essential part of this Agreement)",
+  "columns": [
+   "SECT NO",
+   "ITEMS",
+   "PARTICULARS"
+  ],
+  "rows": [
+   {
+    "no": "1.",
+    "item": "Date of Agreement :",
+    "particulars": "{dateOfAgreement e.g. 25th August 2026}"
+   },
+   {
+    "no": "2.",
+    "item": "Description of Landlord",
+    "particulars": "For each landlord: NAME (bold) (NRIC: <no>) and, if filled, the landlord's address on the next line"
+   },
+   {
+    "no": "3.",
+    "item": "Description of Tenant",
+    "particulars": "For each tenant: NAME (bold) (PASSPORT NO: <no>) [or (NRIC NO: <no>)]; if not Malaysian, three extra lines: Nationality: <..> / Date of Birth: <d MMMM yyyy> / Gender: <Male|Female>. If the tenant is a company: company name (Company No: <SSM>) and a line 'Occupant(s): name 1, name 2, ...' (each occupant with passport/NRIC if given)"
+   },
+   {
+    "no": "4.",
+    "item": "Description of Said Premises",
+    "particulars": "{premisesAddress} (bold)"
+   },
+   {
+    "no": "5 a.",
+    "item": "Term",
+    "particulars": "{term e.g. '1 ( One ) years' or '1 year 3 months'}"
+   },
+   {
+    "no": "5 b.",
+    "item": "Commencing",
+    "particulars": "{commencing e.g. 25th AUGUST 2026} (bold)"
+   },
+   {
+    "no": "5 c.",
+    "item": "Terminating",
+    "particulars": "{terminating e.g. 24th AUGUST 2027} (bold)"
+   },
+   {
+    "no": "6 a.",
+    "item": "Monthly Rental",
+    "particulars": "RM{rent} (Ringgit Malaysia {rentInWords} Only) (bold)"
+   },
+   {
+    "no": "6 b.",
+    "item": "Due On",
+    "particulars": "Due and payable on the {dueDay}th day of the each month."
+   },
+   {
+    "no": "6 c.",
+    "item": "Mode of Payment",
+    "particulars": "Monthly rental to be credited into Landlord's / Bank: {bankName} / Account No: {accountNo} / Accountholder: {accountHolder}"
+   },
+   {
+    "no": "7.",
+    "item": "Security Deposits ({n} months rental)",
+    "particulars": "RM{securityDeposit} (Ringgit Malaysia {words} Only) (bold)"
+   },
+   {
+    "no": "8.",
+    "item": "Utility Deposits ({n} month rental)",
+    "particulars": "RM{utilityDeposit} (Ringgit Malaysia {words} Only) (bold)"
+   },
+   {
+    "no": "9.",
+    "item": "Option To Renew",
+    "particulars": "{optionToRenew e.g. 'One ( 1 ) year at a rental to be mutually agreed upon.'}"
+   },
+   {
+    "no": "10.",
+    "item": "Use of the Said Premises",
+    "particulars": "Residential purpose only."
+   },
+   {
+    "no": "11",
+    "item": "Access Card Deposits",
+    "particulars": "RM {amount} ({details e.g. 'Total 2 access cards + 1 carpark RFID'})",
+    "optional": true
+   }
+  ]
+ },
+ "schedule_ii": {
+  "title": "SCHEDULE II",
+  "subtitle": "MAINTENANCE CHECK LIST",
+  "intro": "This is to confirm that the Landlord / Landlord's representative / agent and the Tenant / Tenant's representative / agent has inspected all the facilities provided for in the unit and accepted them in good working condition and capacity / capacities. Both parties hereby agreed that each party shall be responsible respectively for extent of repair works as follows:",
+  "table_header": [
+   "LANDLORD",
+   "TENANT"
+  ],
+  "landlord_items": [
+   [
+    "Air-conditioner",
+    "(replacement of spare part)"
+   ],
+   [
+    "Water heater, flush system, shower head",
+    "(replacement of spare part)"
+   ],
+   [
+    "Refrigerator",
+    "(replacement of spare part)"
+   ],
+   [
+    "Washing machine",
+    "(replacement of spare part)"
+   ],
+   [
+    "Dryer",
+    "(replacement of spare part)"
+   ],
+   [
+    "Television include DVD player if applicable",
+    "(replacement of spare part)"
+   ],
+   [
+    "Ventilation Fan",
+    "(replacement of spare part)"
+   ]
+  ],
+  "tenant_items": [
+   [
+    "Air-conditioner",
+    "(normal service all air-conditioning regularly at least once every 6 months)"
+   ],
+   [
+    "Lighting",
+    "(replacement of bulb)"
+   ],
+   [
+    "Drainage system",
+    "(clogging & leaking)"
+   ],
+   [
+    "Hinge for wardrobe, cabinet & kitchen cabinet",
+    "(replacement of screw, to maintain good condition)"
+   ],
+   [
+    "Curtain / Blind / Roller / Fabrics/ Carpet",
+    "(to wash/steam clean curtain & carpet)"
+   ],
+   [
+    "Water filter, cooker hood",
+    "(replacement of cartridge)"
+   ],
+   [
+    "All electrical items",
+    "(to maintain good condition inclusive normal servicing)"
+   ]
+  ],
+  "table_note": "*Whichever is applicable",
+  "termination_intro": "In the event the Tenant terminate this Tenancy Agreement he or she shall responsible the following items:",
+  "termination_items": [
+   "To thoroughly clean the whole apartments, include curtains, carpet & other fabrics. Where any item was professionally steam-cleaned by the Landlord prior to the commencement of the Tenancy, the Tenant shall, at the Tenant's own cost, ensure the same item is professionally steam-cleaned before handing over vacant possession of the Premises.",
+   "To service all the air-conditioners.",
+   "To make good and tenantable repair all electrical items (normal wear and tear excepted).",
+   "To ensure plumbing system are in good working conditions.",
+   "To pay all due date charges in respect of water, sewerage, electricity, gas and all others utilities supplied to the premise."
+  ],
+  "signature": "Signed by the Landlord in the presence of: / Confirmed by the Tenant in the presence of: with 'Name:' and 'Date:' lines under each (names default to the two witnesses)"
+ }
+}
