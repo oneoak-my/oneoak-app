@@ -84,6 +84,10 @@ function UtilityStatementsCard({
   const [waterReading, setWaterReading] = useState('')
   const [tenancyStart, setTenancyStart] = useState(record.tenancy_start_date ?? '')
   const [rateOverrides, setRateOverrides] = useState<RateOverrides>({})
+  // EEI box: null = not typed (shows and uses the default). Restored from the record if saved earlier.
+  const savedEei = record.utility_inputs?.eeiRate
+  const [eeiText, setEeiText] = useState<string | null>(savedEei == null ? null : String(savedEei))
+  const [eeiSaveWarning, setEeiSaveWarning] = useState('')
   const [editingRates, setEditingRates] = useState(false)
   const [applying, setApplying] = useState(false)
   const [applyMsg, setApplyMsg] = useState('')
@@ -178,6 +182,26 @@ function UtilityStatementsCard({
     [items],
   )
   const numOrNull = (s: string) => (s.trim() === '' || Number.isNaN(Number(s)) ? null : Number(s))
+  // A finished number like "-0.11", "0" or ".5"; partial input such as "-" or "" keeps the default meanwhile.
+  const eeiTyped = eeiText != null && /^-?(\d+\.?\d*|\.\d+)$/.test(eeiText.trim()) ? Number(eeiText) : null
+
+  // Save the typed EEI on the record (debounced) so it is still there after reopening.
+  const lastSavedEei = useRef<number | null>(savedEei ?? null)
+  useEffect(() => {
+    if (eeiText != null && eeiTyped == null) return // still typing
+    const value = eeiText == null ? null : eeiTyped
+    if (value === lastSavedEei.current) return
+    const t = setTimeout(async () => {
+      try {
+        await updateRecord(record.id, { utility_inputs: { ...(record.utility_inputs ?? {}), eeiRate: value } })
+        lastSavedEei.current = value
+        setEeiSaveWarning('')
+      } catch (e) {
+        setEeiSaveWarning(`EEI rate not saved (${extractError(e)}). Run the utility_inputs SQL in Supabase.`)
+      }
+    }, 800)
+    return () => clearTimeout(t)
+  }, [eeiText, eeiTyped, record.id, record.utility_inputs])
 
   const plan = useMemo(
     () =>
@@ -192,8 +216,9 @@ function UtilityStatementsCard({
         elecReadingDate: elecDate || plannedDate,
         photoReading: numOrNull(waterReading),
         rateOverrides,
+        eeiRate: eeiTyped,
       }),
-    [recordType, unit.unit_number, unit.dual_key, eventDate, tenancyStart, docs, elecReading, elecDate, plannedDate, waterReading, rateOverrides],
+    [recordType, unit.unit_number, unit.dual_key, eventDate, tenancyStart, docs, elecReading, elecDate, plannedDate, waterReading, rateOverrides, eeiTyped],
   )
 
   const photoItem = items.find((i) => i.id === plan.photoDocId)
@@ -380,11 +405,19 @@ function UtilityStatementsCard({
           <Input label="Reading date" type="date" value={elecDate} onChange={(e) => setElecDate(e.target.value)} />
         </div>
 
+        <EeiBox
+          text={eeiText}
+          defaultRate={plan.eeiDefault}
+          usedRate={plan.eeiUsed}
+          invoiceRate={plan.elecInvoice?.rates.eei ?? null}
+          charge={proRate ? proRate.stub.eei : null}
+          saveWarning={eeiSaveWarning}
+          onChange={setEeiText}
+        />
+
         {plan.elecInvoice && (
           <RatesPanel
             invoice={plan.elecInvoice}
-            isCheckIn={isCheckIn}
-            eeiCharge={proRate ? proRate.stub.eei : null}
             overrides={rateOverrides}
             editing={editingRates}
             onToggle={() => setEditingRates((v) => !v)}
@@ -714,6 +747,53 @@ function DocEditor({ doc, onEdit }: { doc: UtilityDoc; onEdit: (mutate: (doc: Ut
   return null
 }
 
+// ── EEI rate box (always visible; default = invoice EEI on check-in, 0 on check-out) ──
+
+function EeiBox({
+  text, defaultRate, usedRate, invoiceRate, charge, saveWarning, onChange,
+}: {
+  text: string | null
+  defaultRate: number
+  usedRate: number
+  invoiceRate: number | null
+  charge: number | null
+  saveWarning: string
+  onChange: (t: string | null) => void
+}) {
+  const shown = text ?? defaultRate.toFixed(4)
+  const partial = text != null && !/^-?(\d+\.?\d*|\.\d+)$/.test(text.trim())
+  return (
+    <div className="space-y-1">
+      <Input
+        label="EEI rate (RM/kWh)"
+        inputMode="decimal"
+        value={shown}
+        placeholder="0.0000"
+        onChange={(e) => {
+          const t = e.target.value.replace(/[^0-9.-]/g, '')
+          // Optional minus, digits, up to 4 decimals.
+          if (/^-?\d*(\.\d{0,4})?$/.test(t)) onChange(t)
+        }}
+      />
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]">
+        {invoiceRate != null && usedRate !== invoiceRate && (
+          <span className="text-orange-300">From invoice: {invoiceRate.toFixed(4)}</span>
+        )}
+        {text != null && (
+          <button type="button" onClick={() => onChange(null)} className="font-semibold text-gold-400 hover:text-gold-300 underline underline-offset-2">
+            Reset
+          </button>
+        )}
+        {partial && <span className="text-orange-300">Finish the number (using {defaultRate.toFixed(4)} meanwhile)</span>}
+        {charge != null && (
+          <span className="text-[#a89d84]">EEI charge: {charge < 0 ? '-' : ''}RM {Math.abs(charge).toFixed(2)}</span>
+        )}
+      </div>
+      {saveWarning && <p className="text-[11px] text-orange-300">{saveWarning}</p>}
+    </div>
+  )
+}
+
 // ── Electricity rates (read-only from the matched invoice; editable on request) ──
 
 type RateKey = 'energy' | 'capacity' | 'network' | 'afa' | 'retailCharge'
@@ -726,12 +806,9 @@ const RATE_FIELDS: { key: RateKey; label: string; digits: number }[] = [
 ]
 
 function RatesPanel({
-  invoice, isCheckIn, eeiCharge, overrides, editing, onToggle, onChange,
+  invoice, overrides, editing, onToggle, onChange,
 }: {
   invoice: NonNullable<ReturnType<typeof buildPlan>['elecInvoice']>
-  isCheckIn: boolean
-  /** EEI charge in the current pro-rate (kWh × EEI rate), when calculated. */
-  eeiCharge: number | null
   overrides: RateOverrides
   editing: boolean
   onToggle: () => void
@@ -742,10 +819,6 @@ function RatesPanel({
   const differs = RATE_FIELDS.some(({ key }) => overrides[key] != null && overrides[key] !== fromInvoice(key))
   const fmt = (v: number | null, digits: number) => (v == null ? '—' : v.toFixed(digits))
   const rePct = invoice.rePct == null ? '—' : `${Math.round(invoice.rePct * 10000) / 100}%`
-  // Check-in uses the invoice's EEI rate (EEI_MODE_CHECKIN); check-out leaves it out (EEI_MODE_CHECKOUT).
-  const eeiText = !isCheckIn
-    ? 'EEI not applied on check-out'
-    : `EEI ${fmt(invoice.rates.eei ?? 0, 4)}${eeiCharge != null ? ` (charge ${eeiCharge < 0 ? '-' : ''}RM ${Math.abs(eeiCharge).toFixed(2)})` : ''}`
 
   return (
     <div className="rounded-xl border border-[#332c20] bg-[#181410] px-3 py-2.5 space-y-2">
@@ -759,7 +832,7 @@ function RatesPanel({
       </div>
       {!editing ? (
         <p className="text-[11px] text-[#a89d84] leading-relaxed">
-          {RATE_FIELDS.map(({ key, label, digits }) => `${label} ${fmt(used(key), digits)}`).join(' · ')} · {eeiText} · RE {rePct}
+          {RATE_FIELDS.map(({ key, label, digits }) => `${label} ${fmt(used(key), digits)}`).join(' · ')} · RE {rePct} · EEI: see box above
         </p>
       ) : (
         <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">

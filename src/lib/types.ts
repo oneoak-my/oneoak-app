@@ -138,6 +138,8 @@ export interface PropertyRecord {
   deposit_topup: boolean | null
   additional_terms: string | null
   renewal_length_custom: string | null
+  /** Values typed in the Utility statements card that should survive reopening the record. */
+  utility_inputs?: { eeiRate?: number | null } | null
   created_by: string | null
   updated_by: string | null
   created_at: string

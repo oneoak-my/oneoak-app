@@ -280,6 +280,8 @@ export type PlanInput = {
   photoReading: number | null
   /** Electricity rates edited by hand (default: the matched invoice's rates). */
   rateOverrides?: RateOverrides
+  /** EEI rate typed in the card's EEI box; null = use the default (see eeiDefault). */
+  eeiRate?: number | null
 }
 
 /** Everything the pro-rate PDF shows; the figures are utilityCalc's own (no second formula). */
@@ -332,6 +334,10 @@ export type Plan = {
   } | null
   /** Month the YNH invoice must be for: the month before the reading date, e.g. "Oct 2026". */
   expectedInvoiceMonth: string
+  /** EEI box default: check-in = the matched invoice's EEI rate (0 if none); check-out = 0. */
+  eeiDefault: number
+  /** EEI rate used in the calculation: the typed value, else the default. */
+  eeiUsed: number
   /** YNH invoices for another month: shown with a warning and a "Use anyway" button. */
   invoiceMonthIssues: { docId: string; message: string; usedAnyway: boolean }[]
 }
@@ -561,6 +567,9 @@ export function buildPlan(input: PlanInput): Plan {
   }
 
   // ── Electricity ──
+  // EEI: whatever is in the card's box; its default is the invoice's rate on check-in and 0 on check-out.
+  const eeiDefault = isCheckIn ? (yInvoice?.doc.data.rates.eei ?? 0) : 0
+  const eeiUsed = input.eeiRate ?? eeiDefault
   let elec: UtilityOutcome = null
   let elecInvoice: Plan['elecInvoice'] = null
   if (yInvoices.length || yStatement) {
@@ -623,7 +632,7 @@ export function buildPlan(input: PlanInput): Plan {
         try {
           if (isCheckIn) {
             if (reading == null) throw new UtilityCalcError('Type the electricity meter reading (kWh)')
-            const r = elecCheckIn({ invoice, ledger, moveInDate: eventDate, readingAsOf: reading })
+            const r = elecCheckIn({ invoice, ledger, moveInDate: eventDate, readingAsOf: reading, eeiRate: eeiUsed })
             warnings.push(...r.warnings)
             const upTo = ledger
               ? monthLabel(dayBefore(firstOfMonth(eventDate)))
@@ -644,7 +653,7 @@ export function buildPlan(input: PlanInput): Plan {
               )
             }
             const r = elecCheckOut({
-              invoice, ledger, tenancyStart: start ?? eventDate, moveOutDate: eventDate, readingAsOf: reading ?? undefined,
+              invoice, ledger, tenancyStart: start ?? eventDate, moveOutDate: eventDate, readingAsOf: reading ?? undefined, eeiRate: eeiUsed,
             })
             warnings.push(...r.warnings)
             let note = ledger && start
@@ -667,5 +676,5 @@ export function buildPlan(input: PlanInput): Plan {
     }
   }
 
-  return { water, elec, warnings, excluded, photoDocId: wPhoto?.id ?? null, elecInvoice, expectedInvoiceMonth, invoiceMonthIssues }
+  return { water, elec, warnings, excluded, photoDocId: wPhoto?.id ?? null, elecInvoice, expectedInvoiceMonth, invoiceMonthIssues, eeiDefault, eeiUsed }
 }
