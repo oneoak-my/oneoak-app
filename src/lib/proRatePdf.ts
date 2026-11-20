@@ -167,7 +167,7 @@ export async function buildProRatePdf(
     ['Energy Charges', d.rates.energy, s.energy],
     ['Capacity Charges', d.rates.capacity, s.capacity],
     ['Network Charges', d.rates.network, s.network],
-    ['Energy Efficiency Incentive', 0, 0],
+    ['Energy Efficiency Incentive', s.eeiRate, s.eei],
     ['Automatic Fuel Adjustment', d.rates.afa, s.afa],
   ]
   for (const [label, rate, charge] of bRows) {
@@ -192,7 +192,12 @@ export async function buildProRatePdf(
     ['Consumption Charges', s.charges, false],
     [d.isCheckIn ? 'Retail Charges (50%)' : 'Retail Charges', s.retail, false],
     ['Subtotal', s.subtotal, true],
-    [`Renewable Energy Charge (${pct(d.rePct)} x Energy + Capacity + Network Charges)`, s.re, false],
+    [
+      s.eeiRate !== 0
+        ? `Renewable Energy Charge (${pct(d.rePct)} x Energy + Capacity + Network + EEI Charges)`
+        : `Renewable Energy Charge (${pct(d.rePct)} x Energy + Capacity + Network Charges)`,
+      s.re, false,
+    ],
   ]
   for (const [label, amount, isBold] of cRows) {
     y -= 16

@@ -383,6 +383,8 @@ function UtilityStatementsCard({
         {plan.elecInvoice && (
           <RatesPanel
             invoice={plan.elecInvoice}
+            isCheckIn={isCheckIn}
+            eeiCharge={proRate ? proRate.stub.eei : null}
             overrides={rateOverrides}
             editing={editingRates}
             onToggle={() => setEditingRates((v) => !v)}
@@ -671,6 +673,7 @@ function DocEditor({ doc, onEdit }: { doc: UtilityDoc; onEdit: (mutate: (doc: Ut
         <Field label="Capacity rate"><NumField value={d.rates.capacity} onChange={(v) => set((x) => { x.rates.capacity = v })} /></Field>
         <Field label="Network rate"><NumField value={d.rates.network} onChange={(v) => set((x) => { x.rates.network = v })} /></Field>
         <Field label="AFA rate"><NumField value={d.rates.afa} onChange={(v) => set((x) => { x.rates.afa = v })} /></Field>
+        <Field label="EEI rate"><NumField value={d.rates.eei} onChange={(v) => set((x) => { x.rates.eei = v })} /></Field>
         <Field label="Retail (RM)"><NumField value={d.retailCharge} onChange={(v) => set((x) => { x.retailCharge = v })} /></Field>
         <Field label="RE %"><NumField value={d.rePct} scale={100} onChange={(v) => set((x) => { x.rePct = v })} /></Field>
         <Field label="Outstanding (RM)"><NumField value={d.outstanding} onChange={(v) => set((x) => { x.outstanding = v })} /></Field>
@@ -723,9 +726,12 @@ const RATE_FIELDS: { key: RateKey; label: string; digits: number }[] = [
 ]
 
 function RatesPanel({
-  invoice, overrides, editing, onToggle, onChange,
+  invoice, isCheckIn, eeiCharge, overrides, editing, onToggle, onChange,
 }: {
   invoice: NonNullable<ReturnType<typeof buildPlan>['elecInvoice']>
+  isCheckIn: boolean
+  /** EEI charge in the current pro-rate (kWh × EEI rate), when calculated. */
+  eeiCharge: number | null
   overrides: RateOverrides
   editing: boolean
   onToggle: () => void
@@ -736,6 +742,10 @@ function RatesPanel({
   const differs = RATE_FIELDS.some(({ key }) => overrides[key] != null && overrides[key] !== fromInvoice(key))
   const fmt = (v: number | null, digits: number) => (v == null ? '—' : v.toFixed(digits))
   const rePct = invoice.rePct == null ? '—' : `${Math.round(invoice.rePct * 10000) / 100}%`
+  // Check-in uses the invoice's EEI rate (EEI_MODE_CHECKIN); check-out leaves it out (EEI_MODE_CHECKOUT).
+  const eeiText = !isCheckIn
+    ? 'EEI not applied on check-out'
+    : `EEI ${fmt(invoice.rates.eei ?? 0, 4)}${eeiCharge != null ? ` (charge ${eeiCharge < 0 ? '-' : ''}RM ${Math.abs(eeiCharge).toFixed(2)})` : ''}`
 
   return (
     <div className="rounded-xl border border-[#332c20] bg-[#181410] px-3 py-2.5 space-y-2">
@@ -749,7 +759,7 @@ function RatesPanel({
       </div>
       {!editing ? (
         <p className="text-[11px] text-[#a89d84] leading-relaxed">
-          {RATE_FIELDS.map(({ key, label, digits }) => `${label} ${fmt(used(key), digits)}`).join(' · ')} · EEI 0 · RE {rePct}
+          {RATE_FIELDS.map(({ key, label, digits }) => `${label} ${fmt(used(key), digits)}`).join(' · ')} · {eeiText} · RE {rePct}
         </p>
       ) : (
         <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">

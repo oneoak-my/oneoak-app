@@ -268,7 +268,7 @@ export type ElecRates = {
   energy: number
   capacity: number
   network: number
-  /** Energy Efficiency Incentive as printed (e.g. -0.1100). Ignored by proRateElectricity: EEI is treated as zero. */
+  /** Energy Efficiency Incentive rate as printed: negative (e.g. -0.1100), zero or positive. */
   eei: number
   afa: number
 }
@@ -299,6 +299,10 @@ export type ElecProRate = {
   energy: number
   capacity: number
   network: number
+  /** EEI rate actually applied (0 when EEI is not used, e.g. on check-out). */
+  eeiRate: number
+  /** kWh × eeiRate; can be negative. */
+  eei: number
   afa: number
   charges: number
   retailFactor: number
@@ -315,10 +319,21 @@ export const RETAIL_FACTOR_CHECKIN = 0.5 // landlord pays half the retail charge
 export const RETAIL_FACTOR_CHECKOUT = 1 // tenant pays the full retail charge
 
 /**
+ * Energy Efficiency Incentive in the pro-rate:
+ * - 'invoice': use the EEI rate printed on the matched invoice (negative, zero or positive).
+ * - 'zero': leave EEI out (rate 0).
+ * Check-out is kept at 'zero' for now; switch it here to 'invoice' when wanted.
+ */
+export type EeiMode = 'invoice' | 'zero'
+export const EEI_MODE_CHECKIN: EeiMode = 'invoice'
+export const EEI_MODE_CHECKOUT: EeiMode = 'zero'
+
+/**
  * Bill for `kwh` at the latest invoice's rates. Nothing is rounded until the final total.
- * - EEI is always treated as zero (any EEI rate on the invoice is ignored).
+ * - EEI charge = kWh × invoice EEI rate when eeiMode is 'invoice', else 0 (can be negative).
  * - retail = retailCharge × retailFactor (0.5 check-in, 1.0 check-out).
- * - RE fund applies to energy + capacity + network; AFA is excluded.
+ * - RE = rePct × (energy + capacity + network + EEI); AFA is excluded.
+ *   With EEI 0 this is the same as rePct × (energy + capacity + network).
  */
 export function proRateElectricity(
   kwh: number,
@@ -326,40 +341,47 @@ export function proRateElectricity(
   retailCharge: number,
   rePct: number,
   retailFactor: number,
+  eeiMode: EeiMode = 'zero',
 ): ElecProRate {
+  const eeiRate = eeiMode === 'invoice' ? rates.eei : 0
   const energy = kwh * rates.energy
   const capacity = kwh * rates.capacity
   const network = kwh * rates.network
+  const eei = kwh * eeiRate
   const afa = kwh * rates.afa
-  const charges = energy + capacity + network + afa
+  const charges = energy + capacity + network + eei + afa
   const retail = retailCharge * retailFactor
   const subtotal = charges + retail
-  const re = rePct * (energy + capacity + network)
+  const re = rePct * (energy + capacity + network + eei)
   const total = round2(subtotal + re)
 
   const steps = [
     `Energy: ${kwh} kWh × ${fmt4(rates.energy)} = ${fmt4(energy)}`,
     `Capacity: ${kwh} kWh × ${fmt4(rates.capacity)} = ${fmt4(capacity)}`,
     `Network: ${kwh} kWh × ${fmt4(rates.network)} = ${fmt4(network)}`,
+    eeiMode === 'invoice'
+      ? `EEI: ${kwh} kWh × ${fmt4(eeiRate)} = ${fmt4(eei)}`
+      : `EEI: not applied (0)`,
     `AFA: ${kwh} kWh × ${fmt4(rates.afa)} = ${fmt4(afa)}`,
-    `EEI: treated as 0`,
     `Charges: ${fmt4(charges)}`,
     `Retail: ${retailCharge.toFixed(2)} × ${retailFactor} = ${fmt4(retail)}`,
     `Subtotal: ${fmt4(subtotal)}`,
-    `RE ${(rePct * 100).toFixed(2)}% × (energy + capacity + network) = ${fmt4(re)}`,
+    eeiRate !== 0
+      ? `RE ${(rePct * 100).toFixed(2)}% × (energy + capacity + network + EEI) = ${fmt4(re)}`
+      : `RE ${(rePct * 100).toFixed(2)}% × (energy + capacity + network) = ${fmt4(re)}`,
     `Total: ${fmt4(subtotal + re)} → ${rm(total)}`,
   ]
-  return { kwh, energy, capacity, network, afa, charges, retailFactor, retail, subtotal, re, total, steps }
+  return { kwh, energy, capacity, network, eeiRate, eei, afa, charges, retailFactor, retail, subtotal, re, total, steps }
 }
 
-function stubFrom(invoice: ElecInvoice, readingAsOf: number, retailFactor: number, label: string): ElecProRate {
+function stubFrom(invoice: ElecInvoice, readingAsOf: number, retailFactor: number, eeiMode: EeiMode, label: string): ElecProRate {
   const kwh = readingAsOf - invoice.currentReading
   if (kwh < 0) {
     throw new UtilityCalcError(
       `Meter reading ${readingAsOf} is below the invoice's current reading ${invoice.currentReading}`,
     )
   }
-  const p = proRateElectricity(kwh, invoice.rates, invoice.retailCharge, invoice.rePct, retailFactor)
+  const p = proRateElectricity(kwh, invoice.rates, invoice.retailCharge, invoice.rePct, retailFactor, eeiMode)
   p.steps.unshift(`${label}: ${readingAsOf} − ${invoice.currentReading} = ${kwh} kWh since invoice ending ${dayLabel(invoice.periodEnd)}`)
   return p
 }
@@ -403,7 +425,7 @@ export function elecCheckIn(args: {
     }
   }
 
-  const stub = stubFrom(invoice, readingAsOf, RETAIL_FACTOR_CHECKIN, 'Usage to move-in (landlord)')
+  const stub = stubFrom(invoice, readingAsOf, RETAIL_FACTOR_CHECKIN, EEI_MODE_CHECKIN, 'Usage to move-in (landlord)')
   steps.push(...stub.steps)
 
   const totalC = beforeC + toCents(stub.total)
@@ -475,7 +497,7 @@ export function elecCheckOut(args: {
     if (readingAsOf == null) {
       throw new UtilityCalcError(`No invoice covers ${monthLabel(out)} yet: the move-out meter reading is required`)
     }
-    stub = stubFrom(invoice, readingAsOf, RETAIL_FACTOR_CHECKOUT, 'Usage to move-out (tenant)')
+    stub = stubFrom(invoice, readingAsOf, RETAIL_FACTOR_CHECKOUT, EEI_MODE_CHECKOUT, 'Usage to move-out (tenant)')
     steps.push(...stub.steps)
   }
 

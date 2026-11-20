@@ -610,7 +610,7 @@ export function buildPlan(input: PlanInput): Plan {
           previousReading: invoice.currentReading,
           previousDate: invoice.periodEnd,
           invoicePeriodLabel: periodLabel(invoice.periodStart, invoice.periodEnd),
-          rates: { ...invoice.rates, eei: 0 },
+          rates: { ...invoice.rates, eei: stub.eeiRate },
           retailCharge: invoice.retailCharge,
           rePct: invoice.rePct,
           stub,
