@@ -13,6 +13,7 @@ import {
 import { buildAgreementModel, depositMonths, dueDayNumber, BLANK } from '@/lib/tenancy/model'
 import { applyDateTermChange } from '@/lib/tenancy/sync'
 import { depositMonthsLabel, ordinal, parseAmount, ringgitWords } from '@/lib/tenancy/helpers'
+import DocDropZone from './DocDropZone'
 
 // ── Small form pieces ────────────────────────────────────────────────────────
 
@@ -23,17 +24,22 @@ function inputCls(highlight: boolean) {
   return cn(BASE_INPUT, highlight ? 'border-orange-500/30 bg-orange-500/20' : 'border-[#332c20]')
 }
 
-function Label({ text, required, empty }: { text: string; required?: boolean; empty?: boolean }) {
+function Label({ text, required, empty, source }: { text: string; required?: boolean; empty?: boolean; source?: string }) {
   return (
-    <span className="flex items-center gap-1.5 text-xs font-medium text-[#a89d84]">
+    <span className="flex flex-wrap items-center gap-1.5 text-xs font-medium text-[#a89d84]">
       {text}
       {required && empty && <span className="text-[10px] font-semibold text-orange-300">Required</span>}
+      {source && (
+        <span title={`Read from ${source}`} className="max-w-[180px] truncate rounded-md border border-blue-500/30 bg-blue-500/20 px-1.5 py-px text-[10px] font-normal text-blue-300">
+          Read from {source}
+        </span>
+      )}
     </span>
   )
 }
 
 function Field({
-  label, value, onChange, required, type = 'text', placeholder, multiline, inputMode,
+  label, value, onChange, required, type = 'text', placeholder, multiline, inputMode, source,
 }: {
   label: string
   value: string
@@ -43,12 +49,13 @@ function Field({
   placeholder?: string
   multiline?: boolean
   inputMode?: 'decimal' | 'numeric'
+  source?: string
 }) {
   const empty = !value.trim()
   const cls = inputCls(!!required && empty)
   return (
     <label className="flex flex-col gap-1.5 min-w-0">
-      <Label text={label} required={required} empty={empty} />
+      <Label text={label} required={required} empty={empty} source={source} />
       {multiline ? (
         <textarea rows={3} className={cn(cls, 'resize-y')} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
       ) : (
@@ -59,12 +66,12 @@ function Field({
 }
 
 function SelectField<T extends string>({
-  label, value, options, onChange, required,
-}: { label: string; value: T; options: { value: T; label: string }[]; onChange: (v: T) => void; required?: boolean }) {
+  label, value, options, onChange, required, source,
+}: { label: string; value: T; options: { value: T; label: string }[]; onChange: (v: T) => void; required?: boolean; source?: string }) {
   const empty = !value
   return (
     <label className="flex flex-col gap-1.5 min-w-0">
-      <Label text={label} required={required} empty={empty} />
+      <Label text={label} required={required} empty={empty} source={source} />
       <select className={cn(inputCls(!!required && empty), 'appearance-none cursor-pointer')} value={value} onChange={(e) => onChange(e.target.value as T)}>
         {options.map((o) => (
           <option key={o.value} value={o.value} className="bg-[#1e1a14] text-[#f5f0e8]">{o.label}</option>
@@ -119,12 +126,14 @@ function LinkButton({ onClick, children }: { onClick: () => void; children: Reac
   )
 }
 
-function PersonFields({ person, onChange, nameLabel, required }: { person: PersonId; onChange: (p: PersonId) => void; nameLabel: string; required?: boolean }) {
+function PersonFields({
+  person, onChange, nameLabel, required, src,
+}: { person: PersonId; onChange: (p: PersonId) => void; nameLabel: string; required?: boolean; src?: (field: 'name' | 'idNo') => string | undefined }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1.5fr] gap-3">
-      <Field label={nameLabel} value={person.name} onChange={(name) => onChange({ ...person, name })} required={required} />
+      <Field label={nameLabel} value={person.name} onChange={(name) => onChange({ ...person, name })} required={required} source={src?.('name')} />
       <SelectField label="ID type" value={person.idType} options={ID_TYPES} onChange={(idType) => onChange({ ...person, idType })} />
-      <Field label="ID no." value={person.idNo} onChange={(idNo) => onChange({ ...person, idNo })} required={required} />
+      <Field label="ID no." value={person.idNo} onChange={(idNo) => onChange({ ...person, idNo })} required={required} source={src?.('idNo')} />
     </div>
   )
 }
@@ -174,6 +183,9 @@ export default function AgreementEditor({ row, units }: { row: TenancyAgreementR
   const [saveError, setSaveError] = useState<string | null>(null)
   const [busy, setBusy] = useState<'pdf' | 'word' | null>(null)
   const [downloadError, setDownloadError] = useState<string | null>(null)
+  // "Read from <file>" tags (this visit only; files themselves are never kept).
+  const [sources, setSources] = useState<Record<string, string>>({})
+  const src = (path: string) => sources[path]
 
   // ── Autosave (debounced; flushes when leaving the page) ──
   const latest = useRef({ title, unitId, templateId, data })
@@ -315,8 +327,20 @@ export default function AgreementEditor({ row, units }: { row: TenancyAgreementR
         {downloadError && <Hint warn>{downloadError}</Hint>}
       </Section>
 
+      <Section title="Upload documents">
+        <DocDropZone
+          data={data}
+          getData={() => latest.current.data}
+          onApply={(next, srcs) => {
+            latest.current = { ...latest.current, data: next }
+            setData(next)
+            setSources((s) => ({ ...s, ...srcs }))
+          }}
+        />
+      </Section>
+
       <Section title="Agreement">
-        <Field label="Date of Agreement" type="date" value={data.agreementDate} onChange={(v) => set('agreementDate', v)} required />
+        <Field label="Date of Agreement" type="date" value={data.agreementDate} onChange={(v) => set('agreementDate', v)} required source={src('agreementDate')} />
       </Section>
 
       {/* Landlords */}
@@ -330,8 +354,8 @@ export default function AgreementEditor({ row, units }: { row: TenancyAgreementR
             title={`Landlord ${i + 1}`}
             onRemove={data.landlords.length > 1 ? () => set('landlords', data.landlords.filter((_, j) => j !== i)) : undefined}
           >
-            <PersonFields person={l} nameLabel="Name" required onChange={(p) => setLandlord(i, { ...l, ...p })} />
-            <Field label="Address (optional)" multiline value={l.address} onChange={(address) => setLandlord(i, { ...l, address })} />
+            <PersonFields person={l} nameLabel="Name" required src={(f) => src(`landlords.${i}.${f}`)} onChange={(p) => setLandlord(i, { ...l, ...p })} />
+            <Field label="Address (optional)" multiline value={l.address} source={src(`landlords.${i}.address`)} onChange={(address) => setLandlord(i, { ...l, address })} />
           </SubCard>
         ))}
       </Section>
@@ -355,21 +379,23 @@ export default function AgreementEditor({ row, units }: { row: TenancyAgreementR
             />
             {t.kind === 'individual' ? (
               <>
-                <PersonFields person={t} nameLabel="Name" required onChange={(p) => setTenant(i, { ...t, ...p })} />
+                <PersonFields person={t} nameLabel="Name" required src={(f) => src(`tenants.${i}.${f}`)} onChange={(p) => setTenant(i, { ...t, ...p })} />
                 <Field
                   label="Nationality"
                   value={t.nationality}
                   placeholder="Malaysian"
                   required={isForeignTenant(t)}
+                  source={src(`tenants.${i}.nationality`)}
                   onChange={(nationality) => setTenant(i, { ...t, nationality })}
                 />
                 {isForeignTenant(t) && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Field label="Date of Birth" type="date" value={t.dob} required onChange={(dob) => setTenant(i, { ...t, dob })} />
+                    <Field label="Date of Birth" type="date" value={t.dob} required source={src(`tenants.${i}.dob`)} onChange={(dob) => setTenant(i, { ...t, dob })} />
                     <SelectField
                       label="Gender"
                       value={t.gender}
                       required
+                      source={src(`tenants.${i}.gender`)}
                       options={[{ value: '', label: 'Select…' }, { value: 'Male', label: 'Male' }, { value: 'Female', label: 'Female' }]}
                       onChange={(gender) => setTenant(i, { ...t, gender })}
                     />
@@ -379,7 +405,7 @@ export default function AgreementEditor({ row, units }: { row: TenancyAgreementR
             ) : (
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr] gap-3">
-                  <Field label="Company name" value={t.companyName} required onChange={(companyName) => setTenant(i, { ...t, companyName })} />
+                  <Field label="Company name" value={t.companyName} required source={src(`tenants.${i}.companyName`)} onChange={(companyName) => setTenant(i, { ...t, companyName })} />
                   <Field label="Company registration no." value={t.companyNo} required onChange={(companyNo) => setTenant(i, { ...t, companyNo })} />
                 </div>
                 <div className="space-y-2">
@@ -405,7 +431,7 @@ export default function AgreementEditor({ row, units }: { row: TenancyAgreementR
                 </div>
                 <div className="space-y-2">
                   <Label text="Authorised signatory (optional, printed in the signing block)" />
-                  <PersonFields person={t.signatory} nameLabel="Name" onChange={(signatory) => setTenant(i, { ...t, signatory })} />
+                  <PersonFields person={t.signatory} nameLabel="Name" src={(f) => src(`tenants.${i}.signatory.${f}`)} onChange={(signatory) => setTenant(i, { ...t, signatory })} />
                 </div>
               </>
             )}
@@ -415,18 +441,18 @@ export default function AgreementEditor({ row, units }: { row: TenancyAgreementR
 
       {/* Premises & term */}
       <Section title="Premises and term">
-        <Field label="Premises address" multiline required value={data.premises} onChange={(v) => set('premises', v)} placeholder={'e.g. A-27-09 Ooak Residence\nJalan Kiara 5, 50480 Mont Kiara, Kuala Lumpur'} />
+        <Field label="Premises address" multiline required source={src('premises')} value={data.premises} onChange={(v) => set('premises', v)} placeholder={'e.g. A-27-09 Ooak Residence\nJalan Kiara 5, 50480 Mont Kiara, Kuala Lumpur'} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Commencing date" type="date" required value={data.commencing} onChange={(value) => setData((d) => applyDateTermChange(d, { field: 'commencing', value }))} />
-          <Field label="Terminating date" type="date" required value={data.terminating} onChange={(value) => setData((d) => applyDateTermChange(d, { field: 'terminating', value }))} />
+          <Field label="Commencing date" type="date" required source={src('commencing')} value={data.commencing} onChange={(value) => setData((d) => applyDateTermChange(d, { field: 'commencing', value }))} />
+          <Field label="Terminating date" type="date" required source={src('terminating')} value={data.terminating} onChange={(value) => setData((d) => applyDateTermChange(d, { field: 'terminating', value }))} />
         </div>
-        <Field label="Term" required value={data.term} placeholder="e.g. 1 ( One ) years or 1 year 3 months" onChange={(value) => setData((d) => applyDateTermChange(d, { field: 'term', value }))} />
+        <Field label="Term" required source={src('term')} value={data.term} placeholder="e.g. 1 ( One ) years or 1 year 3 months" onChange={(value) => setData((d) => applyDateTermChange(d, { field: 'term', value }))} />
         <Hint>Calculated from the dates. Type a term with a commencing date and the terminating date is worked out (start + term − 1 day).</Hint>
       </Section>
 
       {/* Rental */}
       <Section title="Rental">
-        <Field label="Monthly rental (RM)" inputMode="decimal" required value={data.monthlyRent} onChange={(v) => set('monthlyRent', v)} placeholder="3500" />
+        <Field label="Monthly rental (RM)" inputMode="decimal" required source={src('monthlyRent')} value={data.monthlyRent} onChange={(v) => set('monthlyRent', v)} placeholder="3500" />
         {words(rent)}
         <Field
           label="Due on (day of month)"
@@ -437,9 +463,9 @@ export default function AgreementEditor({ row, units }: { row: TenancyAgreementR
         />
         <Hint>Prints as “Due and payable on the {dueDay ? ordinal(dueDay) : BLANK} day of the each month.”</Hint>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <Field label="Bank name" required value={data.bankName} onChange={(v) => set('bankName', v)} />
-          <Field label="Account no." required value={data.accountNo} onChange={(v) => set('accountNo', v)} />
-          <Field label="Account holder" required value={data.accountHolder} onChange={(v) => set('accountHolder', v)} />
+          <Field label="Bank name" required source={src('bankName')} value={data.bankName} onChange={(v) => set('bankName', v)} />
+          <Field label="Account no." required source={src('accountNo')} value={data.accountNo} onChange={(v) => set('accountNo', v)} />
+          <Field label="Account holder" required source={src('accountHolder')} value={data.accountHolder} onChange={(v) => set('accountHolder', v)} />
         </div>
       </Section>
 
@@ -447,12 +473,12 @@ export default function AgreementEditor({ row, units }: { row: TenancyAgreementR
       <Section title="Deposits">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-1">
-            <Field label="Security deposit (RM)" inputMode="decimal" required value={data.securityDeposit} onChange={(v) => set('securityDeposit', v)} />
+            <Field label="Security deposit (RM)" inputMode="decimal" required source={src('securityDeposit')} value={data.securityDeposit} onChange={(v) => set('securityDeposit', v)} />
             {words(security)}
           </div>
           {monthsRow('Security deposit months', data.securityMonths, data.securityDeposit, (v) => set('securityMonths', v))}
           <div className="space-y-1">
-            <Field label="Utility deposit (RM)" inputMode="decimal" required value={data.utilityDeposit} onChange={(v) => set('utilityDeposit', v)} />
+            <Field label="Utility deposit (RM)" inputMode="decimal" required source={src('utilityDeposit')} value={data.utilityDeposit} onChange={(v) => set('utilityDeposit', v)} />
             {words(utility)}
           </div>
           {monthsRow('Utility deposit months', data.utilityMonths, data.utilityDeposit, (v) => set('utilityMonths', v))}
@@ -461,7 +487,7 @@ export default function AgreementEditor({ row, units }: { row: TenancyAgreementR
 
       {/* Other terms */}
       <Section title="Other terms">
-        <Field label="Option to renew" value={data.optionToRenew} onChange={(v) => set('optionToRenew', v)} />
+        <Field label="Option to renew" source={src('optionToRenew')} value={data.optionToRenew} onChange={(v) => set('optionToRenew', v)} />
         <Field label="Use of the premises" value={data.useOfPremises} onChange={(v) => set('useOfPremises', v)} />
         <div className="grid grid-cols-1 sm:grid-cols-[1fr_2fr] gap-3">
           <Field label="Access card deposit (RM, optional)" inputMode="decimal" value={data.accessCardAmount} onChange={(v) => set('accessCardAmount', v)} />
@@ -473,10 +499,10 @@ export default function AgreementEditor({ row, units }: { row: TenancyAgreementR
       {/* Witnesses */}
       <Section title="Witnesses">
         <SubCard title="Landlord's witness">
-          <PersonFields person={data.landlordWitness} nameLabel="Name" required onChange={(p) => set('landlordWitness', p)} />
+          <PersonFields person={data.landlordWitness} nameLabel="Name" required src={(f) => src(`landlordWitness.${f}`)} onChange={(p) => set('landlordWitness', p)} />
         </SubCard>
         <SubCard title="Tenant's witness">
-          <PersonFields person={data.tenantWitness} nameLabel="Name" required onChange={(p) => set('tenantWitness', p)} />
+          <PersonFields person={data.tenantWitness} nameLabel="Name" required src={(f) => src(`tenantWitness.${f}`)} onChange={(p) => set('tenantWitness', p)} />
         </SubCard>
         <Hint>Each witness is printed under every landlord / tenant signing block.</Hint>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
