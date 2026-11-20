@@ -261,8 +261,8 @@ export default function AgreementEditor({ row, units }: { row: TenancyAgreementR
     try {
       const model = buildAgreementModel(template, data)
       if (kind === 'pdf') {
-        const { buildAgreementPdf } = await import('@/lib/tenancy/pdf')
-        const bytes = await buildAgreementPdf(model, template.render)
+        const [{ buildAgreementPdf }, { loadAgreementFonts }] = await Promise.all([import('@/lib/tenancy/pdf'), import('@/lib/tenancy/pdfFonts')])
+        const bytes = await buildAgreementPdf(model, template.render, await loadAgreementFonts())
         downloadBlob(new Blob([bytes as unknown as BlobPart], { type: 'application/pdf' }), `${model.fileStem}.pdf`)
       } else {
         const [{ buildAgreementDocx }, { Packer }] = await Promise.all([import('@/lib/tenancy/docx'), import('docx')])

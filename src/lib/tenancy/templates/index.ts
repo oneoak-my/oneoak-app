@@ -63,7 +63,7 @@ export const TEMPLATES: TenancyTemplate[] = [
     id: 'standard-forfeit-2-months',
     label: 'Standard - Forfeit 2 months deposit',
     json: standardForfeit2Months as TenancyTemplateJson,
-    render: { extraClausesAfter: '7', bodySize: 10.5, marginColumn: 105 },
+    render: { extraClausesAfter: '7', bodySize: 10, marginColumn: 105 },
   },
 ]
 
