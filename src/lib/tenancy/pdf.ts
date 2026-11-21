@@ -26,7 +26,9 @@ const PH = 841.89
 /** Page groups of the original template (points). */
 export const PAGE_GROUPS = {
   main: { left: 78, right: 92.1, top: 63, bottom: 21.6, footer: 14.4, box: [57.35, 58.3] },
-  schedule: { left: 90, right: 90, top: 58.5, bottom: 38.8, footer: 36, box: [53.35, 52.4] },
+  schedule: { left: 36, right: 36, top: 58.5, bottom: 38.8, footer: 36, box: [53.35, 52.4] },
+  /** Schedule II when it needs a little more width to stay on one page. */
+  scheduleTight: { left: 30, right: 30, top: 58.5, bottom: 38.8, footer: 36, box: [53.35, 52.4] },
 } as const
 export type PageGroup = keyof typeof PAGE_GROUPS
 
@@ -40,12 +42,36 @@ export function bodyBottom(g: PageGroup): number {
   return PAGE_GROUPS[g].footer + PAGE_NO_LINE + 1 + 2 * INITIAL_BOX.rowHeight + 6
 }
 
+/** Spacing chosen so each page fits (shared with the Word file so both look the same). */
+export interface AgreementLayout {
+  signing: { above: number; between: number; groups: number; onePage: boolean }
+  schedule: { size: number; pad: number; onePage: boolean }
+  scheduleII: { margin: number; pad: number; para: number; sigGap: number; step: number; lineHeight: number; onePage: boolean }
+}
+
+/** Signing page spacing: roomy target and the minimum it may shrink to. */
+export const SIGNING_SPACING = { max: { above: 40, between: 28, groups: 40 }, min: { above: 22, between: 14, groups: 24 }, dotted: 200 }
+const SCHEDULE_FITS = [{ size: 10, pad: 5 }, { size: 10, pad: 4 }, { size: 10, pad: 3 }, { size: 10, pad: 2 }, { size: 9, pad: 2 }]
+const SCHEDULE_II_FITS = [
+  { margin: 36, pad: 4, para: 1, sigGap: 30, step: 15, lineHeight: 12.5 },
+  { margin: 36, pad: 3, para: 0.7, sigGap: 26, step: 14, lineHeight: 12.5 },
+  { margin: 36, pad: 2, para: 0.5, sigGap: 22, step: 13, lineHeight: 12.3 },
+  { margin: 30, pad: 2, para: 0.4, sigGap: 18, step: 12.5, lineHeight: 12.1 },
+  { margin: 30, pad: 1.5, para: 0.25, sigGap: 14, step: 12.1, lineHeight: 12.1 },
+]
+
 type Family = 'verdana' | 'calibri' | 'arial'
 interface Seg { text: string; bold: boolean }
 /** One word; several segments when styling changes inside it (e.g. a bold value glued to plain text). */
 type Word = Seg[]
 
 export async function buildAgreementPdf(model: AgreementModel, cfg: RenderConfig, fontBytes: AgreementFontBytes): Promise<Uint8Array> {
+  return (await buildAgreementPdfWithLayout(model, cfg, fontBytes)).bytes
+}
+
+export async function buildAgreementPdfWithLayout(
+  model: AgreementModel, cfg: RenderConfig, fontBytes: AgreementFontBytes,
+): Promise<{ bytes: Uint8Array; layout: AgreementLayout }> {
   const [{ PDFDocument, StandardFonts, rgb }, fontkitMod] = await Promise.all([import('pdf-lib'), import('@pdf-lib/fontkit')])
   const doc: PDFDocumentType = await PDFDocument.create()
   const fontkit = ('default' in fontkitMod && fontkitMod.default ? fontkitMod.default : fontkitMod) as Parameters<typeof doc.registerFontkit>[0]
@@ -79,17 +105,34 @@ export async function buildAgreementPdf(model: AgreementModel, cfg: RenderConfig
   let y = PH - PAGE_GROUPS.main.top
   const footerPages: { page: PDFPage; group: PageGroup }[] = []
 
+  // Measuring pass: with `dry` on nothing is drawn and a page break only records that the content overflowed.
+  let dry = false
+  let dryOverflow = false
   const draw = (s: string, x: number, yy: number, size = SIZE, font: PDFFont = verdana, color = black) => {
-    if (s) page.drawText(pdfSafe(s), { x, y: yy, size, font, color })
+    if (s && !dry) page.drawText(pdfSafe(s), { x, y: yy, size, font, color })
   }
   const centre = (s: string, yy: number, size = SIZE, font: PDFFont = verdana, x1 = L, x2 = R) =>
     draw(s, (x1 + x2) / 2 - width(s, font, size) / 2, yy, size, font)
-  const hline = (x1: number, x2: number, yy: number, t = 0.8) =>
-    page.drawLine({ start: { x: x1, y: yy }, end: { x: x2, y: yy }, thickness: t, color: black })
-  const vline = (x: number, y1: number, y2: number, t = 0.8) =>
-    page.drawLine({ start: { x, y: y1 }, end: { x, y: y2 }, thickness: t, color: black })
+  const hline = (x1: number, x2: number, yy: number, t = 0.8) => {
+    if (!dry) page.drawLine({ start: { x: x1, y: yy }, end: { x: x2, y: yy }, thickness: t, color: black })
+  }
+  const vline = (x: number, y1: number, y2: number, t = 0.8) => {
+    if (!dry) page.drawLine({ start: { x, y: y1 }, end: { x, y: y2 }, thickness: t, color: black })
+  }
+
+  /** Runs `render` without drawing; true when it stays on the current page. */
+  function fitsOnPage(render: () => void): boolean {
+    const saved = y
+    dry = true
+    dryOverflow = false
+    try { render() } finally { dry = false }
+    const ok = !dryOverflow && y >= BOTTOM
+    y = saved
+    return ok
+  }
 
   function newPage(g: PageGroup) {
+    if (dry) { dryOverflow = true; y = PH - PAGE_GROUPS[g].top; return }
     page = doc.addPage([PW, PH])
     group = g
     L = PAGE_GROUPS[g].left
@@ -235,151 +278,208 @@ export async function buildAgreementPdf(model: AgreementModel, cfg: RenderConfig
   }
 
   // ── Signing page (own page, same margins as the clauses) ────────────────
-  // One heading per side, every signer with a signature line, then the side's witness once.
-  newPage('main')
-  paragraph([{ text: model.testimonium }], L, R - L)
-  y -= 26
-  const BRACKET_X = L + 270
-  const SIGN_X1 = BRACKET_X + 20
-  const dots = (x1: number, x2: number) => '.'.repeat(Math.max(10, Math.floor((x2 - x1) / width('.', verdana, SIZE))))
-  for (const side of model.signing) {
-    const rows: { words: Word[]; dotted: boolean; gap?: number }[] = []
-    const addLine = (line: Line, dotted: boolean) =>
-      wrapRuns(line, BRACKET_X - L - 8, SIZE).forEach((words, k) => rows.push({ words, dotted: dotted && k === 0 }))
-    addLine([{ text: side.heading, bold: true }], false)
-    side.signers.forEach((lines, si) => {
-      if (si > 0) rows.push({ words: [], dotted: false, gap: LH * 0.6 })
-      lines.forEach((line, i) => addLine(line, i === 0))
+  // One heading per side; every signer gets empty space above a long dotted line; the side's witness once.
+  // All landlords and tenants stay on this page: spacing shrinks evenly (to the minimum) before anything moves.
+  const dotsFor = (w: number, size = SIZE) => '.'.repeat(Math.max(10, Math.floor(w / width('.', verdana, size))))
+  const SIGN_R = R
+  const SIGN_X1 = SIGN_R - SIGNING_SPACING.dotted
+  const BRACKET_X = SIGN_X1 - 14
+  type SignSpacing = { above: number; between: number; groups: number }
+  function renderSigning(sp: SignSpacing, tenantsOnNextPage = false) {
+    paragraph([{ text: model.testimonium }], L, R - L)
+    model.signing.forEach((side, si) => {
+      // Last resort only (minimum spacing still too tall): the tenant group starts a new page, never split inside a group.
+      if (si > 0 && tenantsOnNextPage) newPage('main')
+      else y -= si === 0 ? 24 : sp.groups
+      const row = (words: Word[], dotted: boolean) => {
+        if (y - LH < BOTTOM) newPage('main')
+        y -= LH
+        drawWords(words, L, y, SIZE, null)
+        draw(')', BRACKET_X, y)
+        if (dotted) draw(dotsFor(SIGN_R - SIGN_X1), SIGN_X1, y)
+      }
+      const lines = (line: Line, dotted: boolean) =>
+        wrapRuns(line, BRACKET_X - L - 8, SIZE).forEach((words, k) => row(words, dotted && k === 0))
+      // Empty space above a signature line, with the ")" column continuing.
+      const space = (h: number) => {
+        const steps = Math.max(1, Math.round(h / LH))
+        for (let k = 0; k < steps; k++) {
+          if (y - h / steps < BOTTOM) newPage('main')
+          y -= h / steps
+          if (k < steps - 1) draw(')', BRACKET_X, y)
+        }
+      }
+      lines([{ text: side.heading, bold: true }], false)
+      side.signers.forEach((signer, k) => {
+        if (k > 0) y -= sp.between
+        space(sp.above)
+        signer.forEach((line, i) => lines(line, i === 0))
+      })
+      y -= sp.between
+      lines(side.witness[0], false)
+      space(sp.above)
+      side.witness.slice(1).forEach((line, i) => lines(line, i === 0))
     })
-    rows.push({ words: [], dotted: false, gap: LH * 0.6 })
-    side.witness.forEach((line, i) => addLine(line, i === 1))
-    const h = rows.reduce((s, r) => s + (r.gap ?? LH), 0) + 30
-    if (y - h < BOTTOM) newPage('main')
-    for (const r of rows) {
-      if (r.gap) { y -= r.gap; continue }
-      y -= LH
-      drawWords(r.words, L, y, SIZE, null)
-      draw(')', BRACKET_X, y)
-      if (r.dotted) draw(dots(SIGN_X1, R), SIGN_X1, y)
-    }
-    y -= 30
   }
+  const lerp = (t: number): SignSpacing => {
+    const { max, min } = SIGNING_SPACING
+    return { above: min.above + (max.above - min.above) * t, between: min.between + (max.between - min.between) * t, groups: min.groups + (max.groups - min.groups) * t }
+  }
+  newPage('main')
+  let signT = 1
+  while (signT > 0 && !fitsOnPage(() => renderSigning(lerp(signT)))) signT = Math.max(0, +(signT - 0.05).toFixed(2))
+  const signSpacing = lerp(signT)
+  const signingOnePage = fitsOnPage(() => renderSigning(signSpacing))
+  renderSigning(signSpacing, !signingOnePage)
 
-  // ── THE SCHEDULE (Verdana 10, schedule margins) ──────────────────────────
-  newPage('schedule')
-  y -= LH
-  centre(model.schedule.title, y, SIZE, verdanaBold)
-  y -= 2
-  paragraph([{ text: model.schedule.subtitle }], L, R - L, { align: 'center' })
-  y -= 10
-  const COLS = [L, L + 58, L + 200, R]
-  const PAD = 5
-  const cellW = (i: number) => COLS[i + 1] - COLS[i] - 2 * PAD
-  function tableHeader(cols: string[], xs: number[]) {
-    const h = LH + 8
-    page.drawRectangle({ x: xs[0], y: y - h, width: xs[xs.length - 1] - xs[0], height: h, color: rgb(0.9, 0.9, 0.9) })
+  // ── THE SCHEDULE (one page: shrink cell padding first, then 10 → 9 pt) ───
+  function tableHeader(cols: string[], xs: number[], size: number) {
+    const lh = size * 1.25
+    const cellLines = cols.map((c, i) => wrapRuns([{ text: c, bold: true }], xs[i + 1] - xs[i] - 4, size))
+    const h = Math.max(...cellLines.map((l) => l.length)) * lh + 8
+    if (!dry) page.drawRectangle({ x: xs[0], y: y - h, width: xs[xs.length - 1] - xs[0], height: h, color: rgb(0.9, 0.9, 0.9) })
     hline(xs[0], xs[xs.length - 1], y)
-    cols.forEach((c, i) => centre(c, y - h + 6.5, SIZE, verdanaBold, xs[i], xs[i + 1]))
+    cellLines.forEach((ls, i) => ls.forEach((ws, k) => drawWords(ws, (xs[i] + xs[i + 1]) / 2 - lineWidth(ws, size) / 2, y - 4 - size - k * lh + 1, size, null)))
     xs.forEach((x) => vline(x, y, y - h))
     y -= h
     hline(xs[0], xs[xs.length - 1], y)
   }
-  tableHeader(model.schedule.columns, COLS)
-  for (const row of model.schedule.rows) {
-    const noLs = wrapRuns([{ text: row.no }], cellW(0), SIZE)
-    const itemLs = wrapRuns([{ text: row.item }], cellW(1), SIZE)
-    const partLs = row.lines.flatMap((l) => (l.every((r) => !r.text) ? [[]] : wrapRuns(l, cellW(2), SIZE)))
-    const n = Math.max(1, noLs.length, itemLs.length, partLs.length)
-    const h = n * LH + 2 * PAD
-    if (y - h < BOTTOM) {
-      newPage('schedule')
-      tableHeader(model.schedule.columns, COLS)
+  function renderSchedule(size: number, pad: number) {
+    const lh = size * 1.25
+    y -= LH
+    centre(model.schedule.title, y, SIZE, verdanaBold)
+    y -= 2
+    paragraph([{ text: model.schedule.subtitle }], L, R - L, { align: 'center' })
+    y -= 8
+    // SECT NO ≈ 40 pt | ITEMS ≈ 120 pt | PARTICULARS = the rest (≈ 363 pt on a 523 pt table)
+    const COLS = [L, L + 40, L + 160, R]
+    const cellW = (i: number) => COLS[i + 1] - COLS[i] - 2 * pad
+    tableHeader(model.schedule.columns, COLS, size)
+    for (const row of model.schedule.rows) {
+      const noLs = wrapRuns([{ text: row.no }], cellW(0), size)
+      const itemLs = wrapRuns([{ text: row.item }], cellW(1), size)
+      const partLs = row.lines.flatMap((l) => (l.every((r) => !r.text) ? [[]] : wrapRuns(l, cellW(2), size)))
+      const n = Math.max(1, noLs.length, itemLs.length, partLs.length)
+      const h = n * lh + 2 * pad
+      if (y - h < BOTTOM) {
+        newPage('schedule')
+        tableHeader(model.schedule.columns, COLS, size)
+      }
+      const top = y
+      const base = top - pad - size
+      noLs.forEach((ws, i) => drawWords(ws, COLS[0] + pad, base - i * lh, size, null))
+      itemLs.forEach((ws, i) => drawWords(ws, COLS[1] + pad, base - i * lh, size, null))
+      partLs.forEach((ws, i) => drawWords(ws, COLS[2] + pad, base - i * lh, size, null))
+      y -= h
+      COLS.forEach((x) => vline(x, top, y))
+      hline(COLS[0], COLS[3], y)
     }
-    const top = y
-    const base = top - PAD - SIZE
-    noLs.forEach((ws, i) => drawWords(ws, COLS[0] + PAD, base - i * LH, SIZE, null))
-    itemLs.forEach((ws, i) => drawWords(ws, COLS[1] + PAD, base - i * LH, SIZE, null))
-    partLs.forEach((ws, i) => drawWords(ws, COLS[2] + PAD, base - i * LH, SIZE, null))
-    y -= h
-    COLS.forEach((x) => vline(x, top, y))
-    hline(COLS[0], COLS[3], y)
   }
-
-  // ── SCHEDULE II ──────────────────────────────────────────────────────────
-  const s2 = model.scheduleII
   newPage('schedule')
-  y -= LH
-  centre(s2.title, y, SIZE, verdanaBold)
-  y -= LH + 2
-  centre(s2.subtitle, y, SIZE, verdanaBold)
-  y -= 6
-  paragraph([{ text: s2.intro }], L, R - L)
-  y -= 10
-  const X2 = [L, (L + R) / 2, R]
-  tableHeader(s2.table_header, X2)
-  const nRows = Math.max(s2.landlord_items.length, s2.tenant_items.length)
-  const cellW2 = X2[1] - X2[0] - 2 * PAD
-  for (let i = 0; i < nRows; i++) {
-    // Each cell: "1. Item" then the note in brackets, indented.
-    const cell = (it: string[] | undefined) => {
-      if (!it) return [] as { ws: Word[]; dx: number }[]
-      const [name, ...rest] = it
-      return [
-        ...wrapRuns([{ text: `${i + 1}. ${name}` }], cellW2, SIZE).map((ws) => ({ ws, dx: 0 })),
-        ...rest.flatMap((r) => wrapRuns([{ text: r }], cellW2 - 12, SIZE).map((ws) => ({ ws, dx: 12 }))),
-      ]
+  const schedFit = SCHEDULE_FITS.find((f) => fitsOnPage(() => renderSchedule(f.size, f.pad))) ?? null
+  const schedChoice = schedFit ?? SCHEDULE_FITS[SCHEDULE_FITS.length - 1]
+  renderSchedule(schedChoice.size, schedChoice.pad)
+
+  // ── SCHEDULE II (one page, Verdana 10 kept; spacing and padding shrink) ──
+  const s2 = model.scheduleII
+  type S2Fit = (typeof SCHEDULE_II_FITS)[number]
+  function renderScheduleII(f: S2Fit) {
+    const lh = f.lineHeight
+    const para = (runs: Run[], x: number, w: number, justify = true) => {
+      const ls = wrapRuns(runs, w, SIZE)
+      ls.forEach((ws, i) => {
+        if (y - lh < BOTTOM) newPage(group)
+        y -= lh
+        drawWords(ws, x, y, SIZE, justify && i < ls.length - 1 ? w : null)
+      })
     }
-    const a = cell(s2.landlord_items[i])
-    const b = cell(s2.tenant_items[i])
-    const h = Math.max(a.length, b.length) * LH + 2 * PAD
-    if (y - h < BOTTOM) { newPage('schedule'); tableHeader(s2.table_header, X2) }
-    const top = y
-    a.forEach((c, j) => drawWords(c.ws, X2[0] + PAD + c.dx, top - PAD - SIZE - j * LH, SIZE, null))
-    b.forEach((c, j) => drawWords(c.ws, X2[1] + PAD + c.dx, top - PAD - SIZE - j * LH, SIZE, null))
-    y -= h
-    X2.forEach((x) => vline(x, top, y))
-    hline(X2[0], X2[2], y)
-  }
-  y -= 4
-  paragraph([{ text: s2.table_note }], L, R - L, { align: 'left' })
-  y -= 8
-  paragraph([{ text: s2.termination_intro }], L, R - L)
-  y -= 2
-  s2.termination_items.forEach((t, i) => {
-    const ls = wrapRuns([{ text: t }], R - L - 22, SIZE)
-    ls.forEach((ws, j) => {
-      if (y - LH < BOTTOM) newPage('schedule')
-      y -= LH
-      if (j === 0) draw(`${i + 1}.`, L + 2, y)
-      drawWords(ws, L + 22, y, SIZE, j < ls.length - 1 ? R - L - 22 : null)
+    y -= lh
+    centre(s2.title, y, SIZE, verdanaBold)
+    y -= lh
+    centre(s2.subtitle, y, SIZE, verdanaBold)
+    y -= 6 * f.para
+    para([{ text: s2.intro }], L, R - L)
+    y -= 8 * f.para
+    // LANDLORD ≈ 238 pt | TENANT = the rest (≈ 285 pt)
+    const X2 = [L, L + 238, R]
+    tableHeader(s2.table_header, X2, SIZE)
+    const nRows = Math.max(s2.landlord_items.length, s2.tenant_items.length)
+    for (let i = 0; i < nRows; i++) {
+      // Each cell: "1. Item" then the note in brackets, indented.
+      const cell = (it: string[] | undefined, w: number) => {
+        if (!it) return [] as { ws: Word[]; dx: number }[]
+        const [name, ...rest] = it
+        return [
+          ...wrapRuns([{ text: `${i + 1}. ${name}` }], w, SIZE).map((ws) => ({ ws, dx: 0 })),
+          ...rest.flatMap((r) => wrapRuns([{ text: r }], w - 12, SIZE).map((ws) => ({ ws, dx: 12 }))),
+        ]
+      }
+      const a = cell(s2.landlord_items[i], X2[1] - X2[0] - 2 * f.pad)
+      const b = cell(s2.tenant_items[i], X2[2] - X2[1] - 2 * f.pad)
+      const h = Math.max(a.length, b.length) * lh + 2 * f.pad
+      if (y - h < BOTTOM) { newPage(group); tableHeader(s2.table_header, X2, SIZE) }
+      const top = y
+      a.forEach((c, j) => drawWords(c.ws, X2[0] + f.pad + c.dx, top - f.pad - SIZE - j * lh, SIZE, null))
+      b.forEach((c, j) => drawWords(c.ws, X2[1] + f.pad + c.dx, top - f.pad - SIZE - j * lh, SIZE, null))
+      y -= h
+      X2.forEach((x) => vline(x, top, y))
+      hline(X2[0], X2[2], y)
+    }
+    y -= 2 * f.para
+    para([{ text: s2.table_note }], L, R - L, false)
+    y -= 6 * f.para
+    para([{ text: s2.termination_intro }], L, R - L)
+    y -= 2 * f.para
+    s2.termination_items.forEach((t, i) => {
+      const ls = wrapRuns([{ text: t }], R - L - 22, SIZE)
+      ls.forEach((ws, j) => {
+        if (y - lh < BOTTOM) newPage(group)
+        y -= lh
+        if (j === 0) draw(`${i + 1}.`, L + 2, y)
+        drawWords(ws, L + 22, y, SIZE, j < ls.length - 1 ? R - L - 22 : null)
+      })
+      y -= 2 * f.para
     })
-    y -= 3
-  })
-  // Signing part: landlords under the landlord heading, tenants under the tenant heading (one block per name).
-  const half = (R - L) / 2
-  const sigLines = (heading: string) => wrapRuns([{ text: heading, bold: true }], half - 10, SIZE)
-  const headL = sigLines('Signed by the Landlord in the presence of:')
-  const headT = sigLines('Confirmed by the Tenant in the presence of:')
-  const nameLines = (name: string) => wrapRuns([{ text: `Name: ${name}` }], half - 10, SIZE)
-  const PER_NAME_GAP = 32
-  const colHeight = (head: Word[][], names: string[]) =>
-    head.length * LH + names.reduce((s, n) => s + PER_NAME_GAP + LH + nameLines(n).length * 16 + 16, 0)
-  const sigH = Math.max(colHeight(headL, s2.landlordNames), colHeight(headT, s2.tenantNames))
-  if (y - 30 - sigH < BOTTOM) newPage('schedule')
-  y -= 30
-  const sigCol = (x: number, head: Word[][], names: string[]) => {
-    let yy = y
-    head.forEach((ws) => { drawWords(ws, x, yy, SIZE, null); yy -= LH })
-    for (const name of names) {
-      yy -= PER_NAME_GAP
-      draw(dots(x, x + half - 10), x, yy)
-      for (const ws of nameLines(name)) { yy -= 16; drawWords(ws, x, yy, SIZE, null) }
-      yy -= 16
-      draw('Date:', x, yy)
+    // Signature part: landlord names under the landlord title, tenant names under the tenant title.
+    const half = (R - L) / 2
+    const colW = half - 10
+    y -= 14 * f.para + 6
+    const startY = y
+    let lowest = y
+    const sigCol = (x: number, title: string, names: string[]) => {
+      let yy = startY
+      wrapRuns([{ text: title, bold: true }], colW, SIZE).forEach((ws) => { yy -= lh; drawWords(ws, x, yy, SIZE, null) })
+      for (const name of names) {
+        yy -= f.sigGap + lh
+        draw(dotsFor(colW), x, yy)
+        wrapRuns([{ text: `Name: ${name}` }], colW, SIZE).forEach((ws) => { yy -= f.step; drawWords(ws, x, yy, SIZE, null) })
+        yy -= f.step
+        draw('Date:', x, yy)
+      }
+      lowest = Math.min(lowest, yy)
     }
+    sigCol(L, s2.landlordSignTitle, s2.landlordNames)
+    sigCol(L + half + 10, s2.tenantSignTitle, s2.tenantNames)
+    y = lowest
+    if (y < BOTTOM) newPage(group)
   }
-  sigCol(L, headL, s2.landlordNames)
-  sigCol(L + half + 10, headT, s2.tenantNames)
+  const s2Group = (f: S2Fit): PageGroup => (f.margin === 30 ? 'scheduleTight' : 'schedule')
+  const s2Fit = SCHEDULE_II_FITS.find((f) => {
+    newPageMeasure(s2Group(f))
+    return fitsOnPage(() => renderScheduleII(f))
+  }) ?? null
+  const s2Choice = s2Fit ?? SCHEDULE_II_FITS[SCHEDULE_II_FITS.length - 1]
+  newPage(s2Group(s2Choice))
+  renderScheduleII(s2Choice)
+
+  /** Sets the page geometry of a group for measuring, without adding a page. */
+  function newPageMeasure(g: PageGroup) {
+    group = g
+    L = PAGE_GROUPS[g].left
+    R = PW - PAGE_GROUPS[g].right
+    BOTTOM = bodyBottom(g)
+    y = PH - PAGE_GROUPS[g].top
+  }
 
   // ── Footers on every page except the cover: initial box (Arial 8) + page number (Arial 9) ──
   footerPages.forEach(({ page: p, group: g }, i) => {
@@ -401,5 +501,10 @@ export async function buildAgreementPdf(model: AgreementModel, cfg: RenderConfig
     })
   })
 
-  return doc.save()
+  const layout: AgreementLayout = {
+    signing: { ...signSpacing, onePage: signingOnePage },
+    schedule: { ...schedChoice, onePage: !!schedFit },
+    scheduleII: { ...s2Choice, onePage: !!s2Fit },
+  }
+  return { bytes: await doc.save(), layout }
 }

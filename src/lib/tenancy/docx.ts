@@ -5,12 +5,20 @@
 import type { Document as DocxDocument, Paragraph as DocxParagraph, Table as DocxTable, TextRun as DocxTextRun } from 'docx'
 import type { AgreementModel, BodyItem, Line, Run } from './model'
 import type { RenderConfig } from './templates'
+import type { AgreementLayout } from './pdf'
 
-export async function buildAgreementDocx(model: AgreementModel, cfg: RenderConfig): Promise<DocxDocument> {
+/** Used when no measured layout is passed (the PDF measuring pass normally provides one). */
+const DEFAULT_LAYOUT: AgreementLayout = {
+  signing: { above: 40, between: 28, groups: 40, onePage: true },
+  schedule: { size: 10, pad: 3, onePage: true },
+  scheduleII: { margin: 36, pad: 3, para: 0.7, sigGap: 26, step: 14, lineHeight: 12.5, onePage: true },
+}
+
+export async function buildAgreementDocx(model: AgreementModel, cfg: RenderConfig, layout: AgreementLayout = DEFAULT_LAYOUT): Promise<DocxDocument> {
   const {
     Document, Paragraph, TextRun, AlignmentType, Table, TableRow, TableCell, WidthType, TableLayoutType,
     BorderStyle, Footer, PageNumber, VerticalAlign, VerticalAlignSection, PageBorderDisplay, PageBorderOffsetFrom,
-    ShadingType, HeightRule, PageBreak, TabStopType, LineRuleType,
+    ShadingType, HeightRule, TabStopType, LineRuleType,
   } = await import('docx')
 
   // Original template fonts: body Verdana 10, cover Calibri, margin headings / initial boxes / page number Arial.
@@ -21,7 +29,7 @@ export async function buildAgreementDocx(model: AgreementModel, cfg: RenderConfi
   const PAGE_W = 11906
   // Original template margins (twips): cover/clauses/signing, and the two schedule pages.
   const MAIN = { left: 1560, right: 1842, top: 1260, bottom: 432, footer: 288 }
-  const SCHED = { left: 1800, right: 1800, top: 1170, bottom: 776, footer: 720 }
+  const SCHED = { left: 720, right: 720, top: 1170, bottom: 776, footer: 720 }
   const CONTENT_W = PAGE_W - MAIN.left - MAIN.right
   const CONTENT_S = PAGE_W - SCHED.left - SCHED.right
   const dxa = (n: number) => ({ size: n, type: WidthType.DXA })
@@ -140,33 +148,50 @@ export async function buildAgreementDocx(model: AgreementModel, cfg: RenderConfi
   const mainFooter = new Footer({ children: [initialBox([1147, 1166]), pageNumberPara()] })
   const scheduleFooter = new Footer({ children: [initialBox([1067, 1048]), pageNumberPara()] })
 
-  // ── Signing ──────────────────────────────────────────────────────────────
-  const SIG_L = 5200
-  const SIG_B = 400
-  const SIG_R = CONTENT_W - SIG_L - SIG_B
-  const dots = '.'.repeat(38)
-  // keepNext on every row but the last keeps each side's block on one page.
-  const sigRow = (line: Line, dotted: boolean, bracket = true, keepNext = true) =>
+  // ── Signing: same spacing as the PDF (room above each signature line, ~200 pt dotted lines) ──
+  const twip = (n: number) => Math.round(n * 20)
+  const SG = layout.signing
+  const SIG_R = twip(200)
+  const SIG_B = twip(14)
+  const SIG_L = CONTENT_W - SIG_R - SIG_B
+  const dots = '.'.repeat(54)
+  // keepNext on every row keeps the landlord group, the tenant group and both witnesses together on one page.
+  const sigRow = (line: Line, dotted: boolean, keepNext = true) =>
     new TableRow({
       cantSplit: true,
       children: [
-        cell([para(runsOf(line), { after: 40, keepNext })], SIG_L),
-        cell([para(bracket ? [run(')')] : [], { after: 40, keepNext })], SIG_B),
-        cell([para(dotted ? [run(dots)] : [], { after: 40, keepNext })], SIG_R),
+        cell([para(runsOf(line), { keepNext })], SIG_L),
+        cell([para([run(')')], { keepNext })], SIG_B),
+        cell([para(dotted ? [run(dots)] : [], { keepNext })], SIG_R),
+      ],
+    })
+  // Empty space (exact height) with the ")" column continuing.
+  const spacer = (pts: number, bracket = true) =>
+    new TableRow({
+      cantSplit: true,
+      height: { value: twip(pts), rule: HeightRule.EXACT },
+      children: [
+        cell([para([], { keepNext: true })], SIG_L),
+        cell([para(bracket ? [run(')')] : [], { keepNext: true })], SIG_B),
+        cell([para([], { keepNext: true })], SIG_R),
       ],
     })
   const signingChildren: (DocxParagraph | DocxTable)[] = [
-    new Paragraph({ alignment: AlignmentType.JUSTIFIED, spacing: { after: 480, line: 276 }, children: [run(model.testimonium)] }),
+    new Paragraph({ alignment: AlignmentType.JUSTIFIED, spacing: { after: twip(24), line: 250, lineRule: LineRuleType.EXACT }, children: [run(model.testimonium)] }),
   ]
-  for (const side of model.signing) {
+  model.signing.forEach((side, si) => {
+    const last = si === model.signing.length - 1
     const rows = [
       sigRow([{ text: side.heading, bold: true }], false),
-      ...side.signers.flatMap((lines, si) => [
-        ...(si > 0 ? [sigRow([], false, false)] : []),
+      ...side.signers.flatMap((lines, k) => [
+        ...(k > 0 ? [spacer(SG.between, false)] : []),
+        spacer(SG.above),
         ...lines.map((l, i) => sigRow(l, i === 0)),
       ]),
-      sigRow([], false, false),
-      ...side.witness.map((l, i) => sigRow(l, i === 1, true, i < side.witness.length - 1)),
+      spacer(SG.between, false),
+      sigRow(side.witness[0], false),
+      spacer(SG.above),
+      ...side.witness.slice(1).map((l, i, arr) => sigRow(l, i === 0, !(last && i === arr.length - 1))),
     ]
     signingChildren.push(new Table({
       width: dxa(CONTENT_W),
@@ -175,108 +200,118 @@ export async function buildAgreementDocx(model: AgreementModel, cfg: RenderConfi
       borders: NO_BORDERS,
       rows,
     }))
-    signingChildren.push(new Paragraph({ spacing: { after: 360 }, children: [] }))
-  }
+    if (!last) signingChildren.push(new Paragraph({ keepNext: true, spacing: { before: 0, after: 0, line: twip(SG.groups), lineRule: LineRuleType.EXACT }, children: [] }))
+  })
 
-  // ── THE SCHEDULE ─────────────────────────────────────────────────────────
-  const S_NO = 1160, S_ITEM = 2840, S_PART = CONTENT_S - S_NO - S_ITEM
-  const headCell = (t: string, w: number) =>
+  // ── THE SCHEDULE: full width (SECT NO 40 pt | ITEMS 120 pt | PARTICULARS the rest), measured size/padding ──
+  const SZ = Math.round(layout.schedule.size * 2)
+  const PADT = twip(layout.schedule.pad)
+  const S_NO = twip(40), S_ITEM = twip(120), S_PART = CONTENT_S - S_NO - S_ITEM
+  const headCell = (t: string, w: number, size = SIZE) =>
     new TableCell({
       width: dxa(w), verticalAlign: VerticalAlign.CENTER,
+      margins: { top: 60, bottom: 60, left: 40, right: 40 },
       shading: { type: ShadingType.CLEAR, color: 'auto', fill: 'E6E6E6' },
-      children: [para([run(t, { bold: true })], { align: AlignmentType.CENTER, before: 60, after: 60 })],
+      children: [para([run(t, { bold: true, size })], { align: AlignmentType.CENTER })],
     })
-  const textCell = (paras: DocxParagraph[], w: number) =>
-    new TableCell({ width: dxa(w), margins: { top: 80, bottom: 80, left: 100, right: 100 }, children: paras })
+  const textCell = (paras: DocxParagraph[], w: number, pad: number) =>
+    new TableCell({ width: dxa(w), margins: { top: pad, bottom: pad, left: Math.max(pad, 60), right: Math.max(pad, 60) }, children: paras })
+  const schedLine = { line: Math.round(layout.schedule.size * 1.25 * 20), lineRule: LineRuleType.EXACT }
+  const sp = (runs: DocxTextRun[]) => new Paragraph({ spacing: { before: 0, after: 0, ...schedLine }, children: runs })
   const scheduleTable = new Table({
     width: dxa(CONTENT_S),
     columnWidths: [S_NO, S_ITEM, S_PART],
     layout: TableLayoutType.FIXED,
     borders: ALL_BORDERS,
     rows: [
-      new TableRow({ tableHeader: true, children: model.schedule.columns.map((col, i) => headCell(col, [S_NO, S_ITEM, S_PART][i])) }),
+      new TableRow({ tableHeader: true, children: model.schedule.columns.map((col, i) => headCell(col, [S_NO, S_ITEM, S_PART][i], SZ)) }),
       ...model.schedule.rows.map((r) => new TableRow({
         cantSplit: true,
         children: [
-          textCell([para([run(r.no)])], S_NO),
-          textCell([para([run(r.item)])], S_ITEM),
-          textCell(r.lines.map((l) => para(runsOf(l))), S_PART),
+          textCell([sp([run(r.no, { size: SZ })])], S_NO, PADT),
+          textCell([sp([run(r.item, { size: SZ })])], S_ITEM, PADT),
+          textCell(r.lines.map((l) => sp(runsOf(l, SZ))), S_PART, PADT),
         ],
       })),
     ],
   })
+  const scheduleChildren: (DocxParagraph | DocxTable)[] = [
+    para([run(model.schedule.title, { bold: true })], { align: C, after: 40 }),
+    para([run(model.schedule.subtitle)], { align: C, after: 160 }),
+    scheduleTable,
+  ]
 
-  // ── SCHEDULE II ──────────────────────────────────────────────────────────
+  // ── SCHEDULE II: Verdana 10 kept; LANDLORD 238 pt | TENANT the rest; measured padding/spacing ──
   const s2 = model.scheduleII
-  const HALF = Math.floor(CONTENT_S / 2)
-  const itemCell = (it: string[] | undefined, n: number) => {
-    if (!it) return textCell([new Paragraph({ children: [] })], HALF)
+  const F2 = layout.scheduleII
+  const S2M = twip(F2.margin)
+  const S2W = PAGE_W - 2 * S2M
+  const COL_LL = twip(238)
+  const COL_TN = S2W - COL_LL
+  const PAD2 = twip(F2.pad)
+  const s2Line = { line: twip(F2.lineHeight), lineRule: LineRuleType.EXACT }
+  const p2 = (runs: DocxTextRun[], o: { before?: number; after?: number; align?: (typeof AlignmentType)[keyof typeof AlignmentType]; indent?: number } = {}) =>
+    new Paragraph({ alignment: o.align, indent: o.indent ? { left: o.indent } : undefined, spacing: { before: o.before ?? 0, after: o.after ?? 0, ...s2Line }, children: runs })
+  const itemCell = (it: string[] | undefined, n: number, w: number) => {
+    if (!it) return textCell([new Paragraph({ children: [] })], w, PAD2)
     const [name, ...rest] = it
-    return textCell([
-      para([run(`${n}. ${name}`)]),
-      ...rest.map((r) => new Paragraph({ indent: { left: 260 }, children: [run(r)] })),
-    ], HALF)
+    return textCell([p2([run(`${n}. ${name}`)]), ...rest.map((r) => p2([run(r)], { indent: 240 }))], w, PAD2)
   }
   const nRows = Math.max(s2.landlord_items.length, s2.tenant_items.length)
   const s2Table = new Table({
-    width: dxa(CONTENT_S),
-    columnWidths: [HALF, CONTENT_S - HALF],
+    width: dxa(S2W),
+    columnWidths: [COL_LL, COL_TN],
     layout: TableLayoutType.FIXED,
     borders: ALL_BORDERS,
     rows: [
-      new TableRow({ tableHeader: true, children: s2.table_header.map((h) => headCell(h, HALF)) }),
+      new TableRow({ tableHeader: true, children: s2.table_header.map((h, i) => headCell(h, i === 0 ? COL_LL : COL_TN)) }),
       ...Array.from({ length: nRows }, (_, i) => new TableRow({
         cantSplit: true,
-        children: [itemCell(s2.landlord_items[i], i + 1), itemCell(s2.tenant_items[i], i + 1)],
+        children: [itemCell(s2.landlord_items[i], i + 1, COL_LL), itemCell(s2.tenant_items[i], i + 1, COL_TN)],
       })),
     ],
   })
-  const sigCell = (paras: DocxParagraph[]) => new TableCell({ width: dxa(HALF), borders: CELL_NONE, children: paras })
+  const HALF2 = Math.floor(S2W / 2)
+  const sigCell = (paras: DocxParagraph[], w: number) => new TableCell({ width: dxa(w), borders: CELL_NONE, children: paras })
   const s2Sign = new Table({
-    width: dxa(CONTENT_S),
-    columnWidths: [HALF, CONTENT_S - HALF],
+    width: dxa(S2W),
+    columnWidths: [HALF2, S2W - HALF2],
     layout: TableLayoutType.FIXED,
     borders: NO_BORDERS,
     rows: [
       new TableRow({
         cantSplit: true,
-        // Landlord names under the landlord heading, tenant names under the tenant heading (one block each).
+        // Landlord names under the landlord title, tenant names under the tenant title (one block each).
         children: ([
-          ['Signed by the Landlord in the presence of:', s2.landlordNames],
-          ['Confirmed by the Tenant in the presence of:', s2.tenantNames],
-        ] as [string, string[]][]).map(([heading, names]) => sigCell([
-          para([run(heading, { bold: true })]),
+          [s2.landlordSignTitle, s2.landlordNames, HALF2],
+          [s2.tenantSignTitle, s2.tenantNames, S2W - HALF2],
+        ] as [string, string[], number][]).map(([title, names, w]) => sigCell([
+          p2([run(title, { bold: true })]),
           ...names.flatMap((name) => [
-            para([run('.'.repeat(40))], { before: 640, after: 120 }),
-            para([run(`Name: ${name}`)], { after: 120 }),
-            para([run('Date:')]),
+            p2([run('.'.repeat(Math.floor((w / 20 - 14) / 3.64)))], { before: twip(F2.sigGap) }),
+            new Paragraph({ spacing: { before: twip(F2.step - F2.lineHeight), after: 0, ...s2Line }, children: [run(`Name: ${name}`)] }),
+            new Paragraph({ spacing: { before: twip(F2.step - F2.lineHeight), after: 0, ...s2Line }, children: [run('Date:')] }),
           ]),
-        ])),
+        ], w)),
       }),
     ],
   })
-  const s2Para = (text: string, after = 160) =>
-    new Paragraph({ alignment: AlignmentType.JUSTIFIED, spacing: { after }, children: [run(text)] })
-
-  const scheduleChildren: (DocxParagraph | DocxTable)[] = [
-    para([run(model.schedule.title, { bold: true })], { align: C, after: 60 }),
-    para([run(model.schedule.subtitle)], { align: C, after: 240 }),
-    scheduleTable,
-    new Paragraph({ children: [new PageBreak()] }),
-    para([run(s2.title, { bold: true })], { align: C, after: 80 }),
-    para([run(s2.subtitle, { bold: true })], { align: C, after: 200 }),
-    s2Para(s2.intro, 200),
+  const gap = (pts: number) => twip(pts * F2.para)
+  const scheduleIIChildren: (DocxParagraph | DocxTable)[] = [
+    p2([run(s2.title, { bold: true })], { align: C }),
+    p2([run(s2.subtitle, { bold: true })], { align: C, after: gap(6) }),
+    p2([run(s2.intro)], { align: AlignmentType.JUSTIFIED, after: gap(8) }),
     s2Table,
-    para([run(s2.table_note)], { before: 80, after: 200 }),
-    s2Para(s2.termination_intro, 100),
+    p2([run(s2.table_note)], { before: gap(2), after: gap(6) }),
+    p2([run(s2.termination_intro)], { align: AlignmentType.JUSTIFIED, after: gap(2) }),
     ...s2.termination_items.map((t, i) => new Paragraph({
       alignment: AlignmentType.JUSTIFIED,
       indent: { left: 440, hanging: 440 },
-      spacing: { after: 80 },
+      spacing: { before: 0, after: gap(2), ...s2Line },
       children: [run(`${i + 1}.\t${t}`)],
       tabStops: [{ type: TabStopType.LEFT, position: 440 }],
     })),
-    new Paragraph({ spacing: { after: 600 }, children: [] }),
+    p2([], { after: twip(14 * F2.para + 6) }),
     s2Sign,
   ]
 
@@ -307,6 +342,7 @@ export async function buildAgreementDocx(model: AgreementModel, cfg: RenderConfi
       { properties: { page: pageOf(MAIN, { pageNumbers: { start: 1 } }) }, footers: { default: mainFooter }, children: [bodyTable] },
       { properties: { page: pageOf(MAIN) }, footers: { default: mainFooter }, children: signingChildren },
       { properties: { page: pageOf(SCHED) }, footers: { default: scheduleFooter }, children: scheduleChildren },
+      { properties: { page: pageOf({ ...SCHED, left: S2M, right: S2M }) }, footers: { default: scheduleFooter }, children: scheduleIIChildren },
     ],
   })
 }

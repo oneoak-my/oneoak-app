@@ -60,7 +60,7 @@ export interface AgreementModel {
   testimonium: string
   signing: SigningSide[]
   schedule: { title: string; subtitle: string; columns: string[]; rows: ScheduleRow[] }
-  scheduleII: TenancyTemplate['json']['schedule_ii'] & { landlordNames: string[]; tenantNames: string[] }
+  scheduleII: TenancyTemplate['json']['schedule_ii'] & { landlordNames: string[]; tenantNames: string[]; landlordSignTitle: string; tenantSignTitle: string }
 }
 
 const v = (s: string | null | undefined) => (s && s.trim() ? s.trim() : BLANK)
@@ -102,6 +102,18 @@ export function dueDayNumber(d: TenancyData): number | null {
   return parseYmd(d.commencing)?.d ?? null
 }
 
+/** Stored line breaks become spaces so an address flows as normal paragraph text. */
+export function flowAddress(s: string | null | undefined): string {
+  return (s ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean).join(' ').replace(/\s+/g, ' ')
+}
+
+/** The common address when every landlord has the same one (trimmed, spaces collapsed, case ignored); else null. */
+export function sharedAddress(addresses: string[]): string | null {
+  if (!addresses.length || addresses.some((a) => !a)) return null
+  const key = (a: string) => a.replace(/\s+/g, ' ').trim().toLowerCase()
+  return addresses.every((a) => key(a) === key(addresses[0])) ? addresses[0] : null
+}
+
 const normNo = (no: string) => no.replace(/[\s.]/g, '').toLowerCase()
 
 function scheduleRow(def: ScheduleRowDef, d: TenancyData): ScheduleRow | null {
@@ -112,12 +124,17 @@ function scheduleRow(def: ScheduleRowDef, d: TenancyData): ScheduleRow | null {
     case '1':
       return row([plain(longDate(d.agreementDate) ?? BLANK)])
     case '2': {
+      // Name and ID on one line. The address is printed once after the last landlord when every landlord has
+      // the same address; otherwise each landlord's own address goes under that landlord.
       const out: Line[] = []
+      const addresses = d.landlords.map((l) => flowAddress(l.address))
+      const shared = sharedAddress(addresses)
       d.landlords.forEach((l, i) => {
-        if (i > 0) out.push(plain(''))
+        if (i > 0 && !shared && addresses[i - 1]) out.push(plain(''))
         out.push([{ text: upper(l.name), bold: true }, { text: ` (${idLabel(l)})` }])
-        if (l.address.trim()) lines(l.address).forEach((a) => out.push(plain(a)))
+        if (!shared && addresses[i]) out.push(plain(addresses[i]))
       })
+      if (shared) out.push(plain(shared))
       return row(out)
     }
     case '3': {
@@ -138,7 +155,7 @@ function scheduleRow(def: ScheduleRowDef, d: TenancyData): ScheduleRow | null {
       return row(out)
     }
     case '4':
-      return row(lines(d.premises).map((text) => [{ text, bold: true }]))
+      return row([[{ text: flowAddress(d.premises) || BLANK, bold: true }]])
     case '5a':
       return row([plain(v(d.term))])
     case '5b':
@@ -252,6 +269,8 @@ export function buildAgreementModel(template: TenancyTemplate, d: TenancyData): 
       ...t.schedule_ii,
       landlordNames: d.landlords.map((l) => upper(l.name)),
       tenantNames: d.tenants.map(tenantName),
+      landlordSignTitle: 'Signed by the Landlord / in the presence of:',
+      tenantSignTitle: 'Confirmed & Signed by the Tenant',
     },
   }
 }

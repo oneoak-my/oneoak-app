@@ -265,8 +265,13 @@ export default function AgreementEditor({ row, units }: { row: TenancyAgreementR
         const bytes = await buildAgreementPdf(model, template.render, await loadAgreementFonts())
         downloadBlob(new Blob([bytes as unknown as BlobPart], { type: 'application/pdf' }), `${model.fileStem}.pdf`)
       } else {
-        const [{ buildAgreementDocx }, { Packer }] = await Promise.all([import('@/lib/tenancy/docx'), import('docx')])
-        const doc = await buildAgreementDocx(model, template.render)
+        // The PDF measuring pass picks the spacing that keeps the signing page and both schedules on one page;
+        // the Word file uses the same values.
+        const [{ buildAgreementDocx }, { Packer }, { buildAgreementPdfWithLayout }, { loadAgreementFonts }] = await Promise.all([
+          import('@/lib/tenancy/docx'), import('docx'), import('@/lib/tenancy/pdf'), import('@/lib/tenancy/pdfFonts'),
+        ])
+        const { layout } = await buildAgreementPdfWithLayout(model, template.render, await loadAgreementFonts())
+        const doc = await buildAgreementDocx(model, template.render, layout)
         downloadBlob(await Packer.toBlob(doc), `${model.fileStem}.docx`)
       }
     } catch (e) {

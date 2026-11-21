@@ -79,7 +79,7 @@ export const TEMPLATES: TenancyTemplate[] = [
     render: {
       extraClausesAfter: '7',
       bodySize: 10,
-      body: { numberX: 78.1, textX: 114.1, textRight: 448.3, marginX: 512.4, marginWidth: 66, lineHeight: 12.1 },
+      body: { numberX: 78.1, textX: 114.1, textRight: 448.3, marginX: 460, marginWidth: 118, lineHeight: 12.1 },
     },
   },
 ]
