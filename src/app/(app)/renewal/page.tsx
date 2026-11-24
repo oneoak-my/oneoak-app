@@ -4,7 +4,11 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { MessageCircle, RefreshCw, LogOut, X, Upload, FileText, Check, CalendarDays } from 'lucide-react'
-import { getRenewalRecords, updateRecord, createRecord, createRenewal, authJsonHeaders } from '@/lib/api'
+import { updateRecord, createRecord, createRenewal, authJsonHeaders } from '@/lib/api'
+import { getExpirySources, getExpiryRemarks, saveExpiryRemark, isMissingTableError } from '@/lib/tenancyExpiryApi'
+import {
+  buildExpiryRows, filterExpiryRows, rangeLabel, shortDate, addMonthsYmd, todayYmdLocal, formatRental, type ExpiryRow,
+} from '@/lib/tenancyExpiry'
 import type { PropertyRecord, Unit } from '@/lib/types'
 import { LISTER_OPTIONS } from '@/lib/types'
 import Modal from '@/components/ui/Modal'
@@ -599,32 +603,105 @@ function RenewalModal({
   )
 }
 
-// ── Page ──────────────────────────────────────────────────────────────────────
-
-const EXPIRY_FILTERS = ['All', '2 months', '3 months', '6 months'] as const
-type ExpiryFilter = typeof EXPIRY_FILTERS[number]
+// ── Page: Tenancy Expiry overview ─────────────────────────────────────────────
+// One row per unit with its latest expiry, from check-in records AND renewals (records of type "renewal" and
+// renewals saved with the Renew button). Remarks are stored per unit in tenancy_expiry_remarks.
 
 const selectCls =
   'bg-[#1e1a14] border border-[#332c20] text-[#f5f0e8] text-xs rounded-lg px-2.5 py-1.5 appearance-none pr-6 focus:outline-none focus:border-gold-500/50 cursor-pointer'
+const dateCls =
+  'bg-[#1e1a14] border border-[#332c20] text-[#f5f0e8] text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-gold-500/50'
+
+function RemarkInput({ value, onSave, disabled }: { value: string; onSave: (v: string) => Promise<void>; disabled?: boolean }) {
+  const [draft, setDraft] = useState(value)
+  const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  useEffect(() => { setDraft(value) }, [value])
+  async function blur() {
+    if (draft.trim() === value.trim()) return
+    setState('saving')
+    try {
+      await onSave(draft)
+      setState('saved')
+      setTimeout(() => setState((s) => (s === 'saved' ? 'idle' : s)), 2000)
+    } catch {
+      setState('error')
+    }
+  }
+  return (
+    <div className="flex items-start gap-1.5">
+      <textarea
+        rows={1}
+        value={draft}
+        disabled={disabled}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={blur}
+        placeholder={disabled ? 'Remarks need the SQL' : 'Add remark…'}
+        className="w-full min-w-[140px] resize-y rounded-lg border border-[#332c20] bg-[#1e1a14] px-2 py-1 text-xs text-[#f5f0e8] placeholder-[#5c5040] focus:outline-none focus:border-gold-500/50 disabled:opacity-50"
+      />
+      <span className="w-4 shrink-0 pt-1 text-[11px]">
+        {state === 'saving' && <span className="text-[#7c6f54]">…</span>}
+        {state === 'saved' && <Check size={13} className="text-emerald-300" aria-label="Saved" />}
+        {state === 'error' && <span className="text-orange-300" title="Not saved">!</span>}
+      </span>
+    </div>
+  )
+}
+
+function ActionsMenu({ row, onRenew, onVacate }: { row: ExpiryRow; onRenew: (r: RenewRec) => void; onVacate: (r: RenewRec) => void }) {
+  const [waOpen, setWaOpen] = useState(false)
+  const base = (row.record ?? row.checkin) as RenewRec | null
+  if (!base) return null
+  const rec = { ...base, unit: base.unit ?? ({ id: row.unitId, unit_number: row.unitNo, building: row.building } as Unit) } as RenewRec
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="relative inline-block">
+        <button onClick={() => setWaOpen((o) => !o)} className="p-1.5 rounded-lg hover:bg-green-500/10 text-green-600/50 hover:text-green-400 transition-colors" title="Send WhatsApp reminder">
+          <MessageCircle size={15} />
+        </button>
+        {waOpen && <WaPopup record={rec} onClose={() => setWaOpen(false)} />}
+      </div>
+      <button onClick={() => onRenew(rec)} className="flex items-center gap-1 px-2 py-1 rounded-lg bg-gold-500/10 hover:bg-gold-500/20 text-gold-400 text-[11px] font-medium transition-colors">
+        <RefreshCw size={11} /> Renew
+      </button>
+      <button onClick={() => onVacate(rec)} className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#1e1a14] hover:bg-red-500/10 border border-[#332c20] hover:border-red-500/30 text-[#7c6f54] hover:text-red-400 text-[11px] font-medium transition-colors">
+        <LogOut size={11} /> Vacate
+      </button>
+    </div>
+  )
+}
 
 export default function RenewalPage() {
   const router = useRouter()
-  const [records, setRecords] = useState<RenewRec[]>([])
+  const today = todayYmdLocal()
+  const [rows, setRows] = useState<ExpiryRow[]>([])
+  const [remarks, setRemarks] = useState<Record<string, string>>({})
+  const [remarksMissing, setRemarksMissing] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [expiryFilter, setExpiryFilter] = useState<ExpiryFilter>('All')
+  const [error, setError] = useState<string | null>(null)
+  const [from, setFrom] = useState(today)
+  const [to, setTo] = useState(addMonthsYmd(today, 3))
+  const [includeExpired, setIncludeExpired] = useState(false)
   const [listerFilter, setListerFilter] = useState('All')
-  const [waOpenId, setWaOpenId] = useState<string | null>(null)
-  const [editingExpiry, setEditingExpiry] = useState<string | null>(null)
-  const [expiryDraft, setExpiryDraft] = useState('')
-  const [savedId, setSavedId] = useState<string | null>(null)
+  const [includeRemarks, setIncludeRemarks] = useState(false)
+  const [pdfBusy, setPdfBusy] = useState(false)
   const [vacatingRecord, setVacatingRecord] = useState<RenewRec | null>(null)
   const [renewingRecord, setRenewingRecord] = useState<RenewRec | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
-      const data = await getRenewalRecords()
-      setRecords(data)
+      const { records, renewals } = await getExpirySources()
+      setRows(buildExpiryRows({ units: [], records, renewals }))
+      try {
+        setRemarks(await getExpiryRemarks())
+        setRemarksMissing(false)
+      } catch (e) {
+        if (isMissingTableError(e)) setRemarksMissing(true)
+        else throw e
+      }
+    } catch (e) {
+      setError(`Could not load tenancies: ${(e as Error)?.message ?? e}`)
     } finally {
       setLoading(false)
     }
@@ -632,31 +709,36 @@ export default function RenewalPage() {
 
   useEffect(() => { load() }, [load])
 
-  const filtered = records
-    .filter((r) => {
-      if (listerFilter !== 'All' && r.unit?.lister !== listerFilter) return false
-      if (expiryFilter === 'All') return true
-      const expiry = getExpiry(r)
-      if (!expiry) return false
-      const days = daysUntil(expiry)
-      const max = expiryFilter === '2 months' ? 60 : expiryFilter === '3 months' ? 90 : 180
-      return days <= max
-    })
-    .sort((a, b) => {
-      const ea = getExpiry(a) ?? '9999-99-99'
-      const eb = getExpiry(b) ?? '9999-99-99'
-      return ea.localeCompare(eb)
-    })
+  const lo = from <= to ? from : to
+  const hi = from <= to ? to : from
+  const filtered = filterExpiryRows(rows, lo, hi, today, includeExpired)
+    .filter((r) => listerFilter === 'All' || (r.record?.unit ?? r.checkin?.unit)?.lister === listerFilter)
+  const label = rangeLabel(lo, hi)
 
-  async function saveExpiry(record: RenewRec, value: string) {
-    await updateRecord(record.id, { tenancy_expiry_override: value || null })
-    setRecords((prev) =>
-      prev.map((r) => (r.id === record.id ? { ...r, tenancy_expiry_override: value || null } : r)),
-    )
-    setEditingExpiry(null)
-    setSavedId(record.id)
-    setTimeout(() => setSavedId(null), 2000)
+  async function saveRemark(key: string, value: string) {
+    await saveExpiryRemark(key, value)
+    setRemarks((prev) => ({ ...prev, [key]: value.trim() }))
   }
+
+  async function generatePdf() {
+    setPdfBusy(true)
+    try {
+      const [{ buildExpiryPdf, expiryPdfFileName }, { loadAgreementFonts }] = await Promise.all([
+        import('@/lib/tenancyExpiryPdf'), import('@/lib/tenancy/pdfFonts'),
+      ])
+      const fonts = await loadAgreementFonts()
+      const bytes = await buildExpiryPdf(filtered, { label, includeRemarks, remarks }, fonts)
+      downloadBlob(new Blob([bytes as unknown as BlobPart], { type: 'application/pdf' }), expiryPdfFileName(label))
+    } catch (e) {
+      setError(`Could not build the PDF: ${(e as Error)?.message ?? e}`)
+    } finally {
+      setPdfBusy(false)
+    }
+  }
+
+  const days = (exp: string) => daysUntil(exp)
+  const expiryCls = (exp: string) => (days(exp) < 0 ? 'text-red-400' : days(exp) <= 60 ? 'text-orange-300' : 'text-[#f5f0e8]')
+  const blank = <span className="text-[#5c5040]">—</span>
 
   return (
     <div className="py-5 space-y-4">
@@ -677,240 +759,127 @@ export default function RenewalPage() {
 
       {/* Header */}
       <div className="px-4 flex items-center justify-between">
-        <h1 className="text-lg font-bold text-[#f5f0e8]">Tenancy Renewals</h1>
-        <span className="text-xs text-[#7c6f54]">{loading ? '…' : filtered.length} records</span>
-      </div>
-
-      {/* Filters */}
-      <div className="px-4 bg-[#262018] py-2 rounded-xl flex flex-wrap gap-2 items-center">
-        <div className="flex rounded-lg overflow-hidden border border-[#332c20]">
-          {EXPIRY_FILTERS.map((f) => (
-            <button
-              key={f}
-              onClick={() => setExpiryFilter(f)}
-              className={`px-3 py-1.5 text-xs transition-colors ${
-                expiryFilter === f
-                  ? 'bg-gold-500/20 text-gold-300'
-                  : 'bg-[#1e1a14] text-[#7c6f54] hover:text-[#a89d84]'
-              }`}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
-
-        <div className="relative">
-          <select
-            value={listerFilter}
-            onChange={(e) => setListerFilter(e.target.value)}
-            className={selectCls}
-          >
-            <option value="All">All Listers</option>
-            {LISTER_OPTIONS.map((l) => (
-              <option key={l} value={l}>{l}</option>
-            ))}
-          </select>
-          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[#5c5040] text-xs">▾</span>
-        </div>
-
-        <button
-          onClick={load}
-          className="ml-auto text-[#7c6f54] hover:text-[#f5f0e8] transition-colors"
-          title="Refresh"
-        >
-          <RefreshCw size={15} />
+        <h1 className="text-lg font-bold text-[#f5f0e8]">Tenancy Expiry</h1>
+        <button onClick={load} className="flex items-center gap-1.5 text-xs text-[#7c6f54] hover:text-[#f5f0e8] transition-colors" title="Refresh (re-reads check-ins and renewals)">
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
         </button>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto">
-        {loading ? (
-          <p className="px-4 text-sm text-[#7c6f54]">Loading…</p>
-        ) : filtered.length === 0 ? (
-          <p className="px-4 text-sm text-[#7c6f54]">No tenancy renewal records found.</p>
-        ) : (
-          <table className="w-full min-w-[760px] text-sm border-collapse">
+      {/* Date selection */}
+      <div className="mx-4 bg-[#262018] p-3 rounded-xl flex flex-wrap gap-3 items-end">
+        <label className="flex flex-col gap-1 text-[11px] text-[#a89d84]">
+          From
+          <input type="date" value={from} onChange={(e) => setFrom(e.target.value || today)} className={dateCls} />
+        </label>
+        <label className="flex flex-col gap-1 text-[11px] text-[#a89d84]">
+          To
+          <input type="date" value={to} onChange={(e) => setTo(e.target.value || addMonthsYmd(today, 3))} className={dateCls} />
+        </label>
+        <label className="flex items-center gap-2 text-xs text-[#a89d84] pb-1.5">
+          <input type="checkbox" checked={includeExpired} onChange={(e) => setIncludeExpired(e.target.checked)} />
+          Include already expired
+        </label>
+        <div className="relative pb-0.5">
+          <select value={listerFilter} onChange={(e) => setListerFilter(e.target.value)} className={selectCls}>
+            <option value="All">All Listers</option>
+            {LISTER_OPTIONS.map((l) => <option key={l} value={l}>{l}</option>)}
+          </select>
+          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[#5c5040] text-xs">▾</span>
+        </div>
+      </div>
+
+      {/* Count + PDF */}
+      <div className="px-4 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-[#a89d84]">
+          {loading ? 'Loading…' : `${filtered.length} ${filtered.length === 1 ? 'tenancy expires' : 'tenancies expire'} between ${shortDate(lo)} and ${shortDate(hi)}${includeExpired ? ' (including already expired)' : ''}`}
+        </p>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-xs text-[#a89d84]">
+            <input type="checkbox" checked={includeRemarks} onChange={(e) => setIncludeRemarks(e.target.checked)} />
+            Include remarks
+          </label>
+          <Button variant="primary" size="sm" icon={<FileText size={14} />} loading={pdfBusy} disabled={loading} onClick={generatePdf}>
+            Generate Tenancy Expiry List (PDF)
+          </Button>
+        </div>
+      </div>
+
+      {error && <p className="mx-4 rounded-xl border border-orange-500/30 bg-orange-500/20 px-3 py-2 text-xs text-orange-300">{error}</p>}
+      {remarksMissing && (
+        <p className="mx-4 rounded-xl border border-orange-500/30 bg-orange-500/20 px-3 py-2 text-xs text-orange-300">
+          Remarks are not available yet: run supabase/tenancy_expiry_remarks.sql in Supabase, then refresh.
+        </p>
+      )}
+
+      {!loading && filtered.length === 0 && <p className="px-4 text-sm text-[#7c6f54]">No tenancies expire in this period.</p>}
+
+      {/* Phone: cards */}
+      {filtered.length > 0 && (
+        <div className="px-4 space-y-3 md:hidden">
+          {filtered.map((r, i) => (
+            <div key={r.unitId} className="rounded-xl border border-[#332c20] bg-[#1e1a14] p-3 space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-[11px] text-[#7c6f54]">#{i + 1} · {r.source === 'renewal' ? 'Renewal' : 'Check-in'}</p>
+                  <a href={`/units/${r.unitId}`} className="text-sm font-semibold text-gold-400">{r.unitNo}{r.building ? `, ${r.building}` : ''}</a>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className={`text-sm font-semibold ${expiryCls(r.expiry)}`}>{shortDate(r.expiry)}</p>
+                  <p className="text-[10px] text-[#7c6f54]">{days(r.expiry) < 0 ? `${Math.abs(days(r.expiry))}d ago` : `${days(r.expiry)}d`}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                <span className="text-[#7c6f54]">Owner</span><span className="text-[#f5f0e8]">{r.owner ?? blank}</span>
+                <span className="text-[#7c6f54]">Tenant</span><span className="text-[#f5f0e8]">{r.tenant ?? blank}</span>
+                <span className="text-[#7c6f54]">Rental (RM)</span><span className="text-[#f5f0e8]">{r.rental != null ? formatRental(r.rental) : blank}</span>
+                <span className="text-[#7c6f54]">Original TA start</span><span className="text-[#f5f0e8]">{r.originalStart ? shortDate(r.originalStart) : blank}</span>
+                <span className="text-[#7c6f54]">COA</span><span className="text-[#f5f0e8]">{r.coaName ?? blank}</span>
+              </div>
+              <RemarkInput value={remarks[r.sourceKey] ?? ''} disabled={remarksMissing} onSave={(v) => saveRemark(r.sourceKey, v)} />
+              <ActionsMenu row={r} onRenew={setRenewingRecord} onVacate={setVacatingRecord} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Wider screens: table */}
+      {filtered.length > 0 && (
+        <div className="hidden md:block overflow-x-auto">
+          <table className="w-full min-w-[980px] text-sm border-collapse">
             <thead>
               <tr className="border-b border-[#332c20]">
-                {['Remind By', 'Expiry Date', 'Unit', 'Tenant', 'Lister', 'CoA', 'WhatsApp', 'Action'].map(
-                  (h) => (
-                    <th
-                      key={h}
-                      className={`px-4 py-2.5 text-left text-[10px] font-semibold text-[#f5f0e8] uppercase tracking-wider whitespace-nowrap${h === 'Remind By' ? ' sticky left-0 z-10 bg-[#0e0c08] border-r border-[#332c20]' : ''}`}
-                    >
-                      {h}
-                    </th>
-                  ),
-                )}
+                {['No', 'Expiry Date', 'Property', 'Owner / Tenant', 'Rental (RM)', 'Original TA Start Date', 'COA Name', 'Remark', ''].map((h) => (
+                  <th key={h} className="px-3 py-2.5 text-left text-[10px] font-semibold text-[#f5f0e8] uppercase tracking-wider whitespace-nowrap">{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {filtered.map((r) => {
-                const expiry = getExpiry(r)
-                const remindBy = expiry ? subtractMonths(expiry, 2) : null
-                const daysLeft = expiry ? daysUntil(expiry) : null
-                const isPast = daysLeft !== null && daysLeft < 0
-                const isUrgent = daysLeft !== null && daysLeft >= 0 && daysLeft <= 60
-
-                const today = new Date().toISOString().split('T')[0]
-                const remindActive = remindBy && remindBy <= today
-
-                return (
-                  <tr
-                    key={r.id}
-                    className="border-b border-[#332c20]/40 hover:bg-[#1e1a14] transition-colors group"
-                  >
-                    {/* Remind By */}
-                    <td className="px-4 py-3 whitespace-nowrap sticky left-0 z-10 bg-[#0e0c08] group-hover:bg-[#1e1a14] border-r border-[#332c20] transition-colors">
-                      {remindBy ? (
-                        <span className={`text-xs ${remindActive ? 'text-orange-400' : 'text-[#a89d84]'}`}>
-                          {fmtDate(remindBy)}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-[#5c5040]">—</span>
-                      )}
-                    </td>
-
-                    {/* Expiry Date (inline edit) */}
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      {editingExpiry === r.id ? (
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="date"
-                            value={expiryDraft}
-                            onChange={(e) => setExpiryDraft(e.target.value)}
-                            className="bg-[#1e1a14] border border-gold-500/50 text-[#f5f0e8] text-xs rounded px-2 py-1 w-32 focus:outline-none"
-                            autoFocus
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') saveExpiry(r, expiryDraft)
-                              if (e.key === 'Escape') setEditingExpiry(null)
-                            }}
-                          />
-                          <button
-                            onClick={() => saveExpiry(r, expiryDraft)}
-                            className="text-green-400 hover:text-green-300 transition-colors"
-                          >
-                            <Check size={14} />
-                          </button>
-                          <button
-                            onClick={() => setEditingExpiry(null)}
-                            className="text-[#7c6f54] hover:text-[#f5f0e8] transition-colors"
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => {
-                            setEditingExpiry(r.id)
-                            setExpiryDraft(expiry ?? '')
-                          }}
-                          className="flex items-center gap-1.5 group"
-                        >
-                          <span
-                            className={`text-xs ${
-                              isPast
-                                ? 'text-red-400'
-                                : isUrgent
-                                ? 'text-orange-400'
-                                : 'text-[#f5f0e8]'
-                            }`}
-                          >
-                            {fmtDate(expiry)}
-                          </span>
-                          {daysLeft !== null && (
-                            <span
-                              className={`text-[10px] ${
-                                isPast
-                                  ? 'text-red-400/60'
-                                  : isUrgent
-                                  ? 'text-orange-400/60'
-                                  : 'text-[#5c5040]'
-                              }`}
-                            >
-                              {isPast ? `${Math.abs(daysLeft)}d ago` : `${daysLeft}d`}
-                            </span>
-                          )}
-                          {r.tenancy_expiry_override && (
-                            <span className="text-[10px] text-gold-400/70" title="Override set">*</span>
-                          )}
-                        </button>
-                      )}
-                      {savedId === r.id && (
-                        <span className="text-[10px] text-green-400 ml-1">Saved ✓</span>
-                      )}
-                    </td>
-
-                    {/* Unit */}
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <a
-                        href={`/units/${r.unit_id}`}
-                        className="text-gold-400 hover:text-gold-300 text-xs font-medium transition-colors"
-                      >
-                        {r.unit?.unit_number ?? '—'}
-                      </a>
-                    </td>
-
-                    {/* Tenant */}
-                    <td className="px-4 py-3">
-                      <a
-                        href={`/records/${r.id}`}
-                        className="text-[#f5f0e8] hover:text-gold-300 text-xs transition-colors"
-                      >
-                        {r.tenant_name ?? '—'}
-                      </a>
-                    </td>
-
-                    {/* Lister */}
-                    <td className="px-4 py-3 text-xs text-[#f5f0e8] whitespace-nowrap">
-                      {r.unit?.lister ?? '—'}
-                    </td>
-
-                    {/* CoA */}
-                    <td className="px-4 py-3 text-xs text-[#f5f0e8] whitespace-nowrap">
-                      {r.co_agent_checkin ?? '—'}
-                    </td>
-
-                    {/* WhatsApp */}
-                    <td className="px-4 py-3">
-                      <div className="relative inline-block">
-                        <button
-                          onClick={() => setWaOpenId(waOpenId === r.id ? null : r.id)}
-                          className="p-1.5 rounded-lg hover:bg-green-500/10 text-green-600/50 hover:text-green-400 transition-colors"
-                          title="Send WhatsApp reminder"
-                        >
-                          <MessageCircle size={16} />
-                        </button>
-                        {waOpenId === r.id && (
-                          <WaPopup record={r} onClose={() => setWaOpenId(null)} />
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Action */}
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setRenewingRecord(r)}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gold-500/10 hover:bg-gold-500/20 text-gold-400 text-xs font-medium transition-colors"
-                        >
-                          <RefreshCw size={11} /> Renew
-                        </button>
-                        <button
-                          onClick={() => setVacatingRecord(r)}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#1e1a14] hover:bg-red-500/10 border border-[#332c20] hover:border-red-500/30 text-[#7c6f54] hover:text-red-400 text-xs font-medium transition-colors"
-                        >
-                          <LogOut size={11} /> Vacate
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
+              {filtered.map((r, i) => (
+                <tr key={r.unitId} className="border-b border-[#332c20]/40 hover:bg-[#1e1a14] align-top transition-colors">
+                  <td className="px-3 py-3 text-xs text-[#a89d84]">{i + 1}</td>
+                  <td className="px-3 py-3 whitespace-nowrap">
+                    <span className={`text-xs ${expiryCls(r.expiry)}`}>{shortDate(r.expiry)}</span>
+                    <span className="block text-[10px] text-[#7c6f54]">{days(r.expiry) < 0 ? `${Math.abs(days(r.expiry))}d ago` : `${days(r.expiry)}d`} · {r.source === 'renewal' ? 'renewal' : 'check-in'}</span>
+                  </td>
+                  <td className="px-3 py-3 text-xs">
+                    <a href={`/units/${r.unitId}`} className="text-gold-400 hover:text-gold-300 font-medium">{r.unitNo}</a>
+                    {r.building && <span className="block text-[#a89d84]">{r.building}</span>}
+                  </td>
+                  <td className="px-3 py-3 text-xs text-[#f5f0e8]">
+                    <span className="block">{r.owner ?? blank}</span>
+                    <span className="block text-[#a89d84]">{r.tenant ?? blank}</span>
+                  </td>
+                  <td className="px-3 py-3 text-xs text-[#f5f0e8] whitespace-nowrap">{r.rental != null ? formatRental(r.rental) : blank}</td>
+                  <td className="px-3 py-3 text-xs text-[#f5f0e8] whitespace-nowrap">{r.originalStart ? shortDate(r.originalStart) : blank}</td>
+                  <td className="px-3 py-3 text-xs text-[#f5f0e8]">{r.coaName ?? blank}</td>
+                  <td className="px-3 py-3 w-56"><RemarkInput value={remarks[r.sourceKey] ?? ''} disabled={remarksMissing} onSave={(v) => saveRemark(r.sourceKey, v)} /></td>
+                  <td className="px-3 py-3"><ActionsMenu row={r} onRenew={setRenewingRecord} onVacate={setVacatingRecord} /></td>
+                </tr>
+              ))}
             </tbody>
           </table>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Modals */}
       {vacatingRecord && (
